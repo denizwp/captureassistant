@@ -56,6 +56,7 @@ export interface AppSettings {
   indicatorOpacity: number
 
   alwaysShowIndicators: boolean
+  showCharacterArt: boolean
   soundCues: boolean
 }
 
@@ -113,6 +114,7 @@ export const DEFAULT_SETTINGS: Settings = {
     indicatorCorner: 'bottom-right',
     indicatorOpacity: 0.9,
     alwaysShowIndicators: true,
+    showCharacterArt: false,
     soundCues: true
   }
 }

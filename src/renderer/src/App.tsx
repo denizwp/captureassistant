@@ -34,7 +34,9 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    if (settings) document.documentElement.dataset['mode'] = settings.app.theme
+    if (!settings) return
+    document.documentElement.dataset['mode'] = settings.app.theme
+    document.documentElement.dataset['art'] = settings.app.showCharacterArt ? 'on' : 'off'
   }, [settings])
 
   if (!settings) return null

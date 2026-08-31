@@ -52,6 +52,16 @@ export function GeneralScreen({
               }
             />
             <Setting
+              label="Waifu"
+              control={
+                <Switch
+                  label="Waifu"
+                  checked={app.showCharacterArt}
+                  onChange={(showCharacterArt) => patch({ app: { showCharacterArt } })}
+                />
+              }
+            />
+            <Setting
               label="Tema"
               control={
                 <Segmented<'dark' | 'light'>
