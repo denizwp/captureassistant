@@ -15,6 +15,7 @@ interface CaptureApi {
   getState(): Promise<SupervisorState>
   listMonitors(): Promise<MonitorInfo[]>
   listClips(): Promise<Clip[]>
+  clipThumbnail(path: string, mtimeMs: number): Promise<string | null>
   revealClip(path: string): Promise<void>
   openClip(path: string): Promise<void>
   deleteClip(path: string): Promise<void>

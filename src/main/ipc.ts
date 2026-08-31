@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, screen, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, shell } from 'electron'
 import { readdir, rm, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import type { DeepPartial } from '@shared/ipc'
@@ -7,6 +7,7 @@ import type { Clip } from '@shared/state'
 import type { SettingsStore } from './store'
 import type { AudioEngine } from './audio'
 import type { SupervisorHost } from './supervisor'
+import { thumbnailFor } from './thumbnails'
 
 /**
  * Every renderer call is a request/response `invoke`. State travels the other
@@ -15,9 +16,14 @@ import type { SupervisorHost } from './supervisor'
 export function registerIpc(
   store: SettingsStore,
   audio: AudioEngine,
-  supervisor: SupervisorHost
+  supervisor: SupervisorHost,
+  onSettingsChanged: () => void = () => undefined
 ): void {
   const outputDir = (): string => store.get().output.dir ?? defaultOutputDir()
+
+  // Reapply on boot: the user may have toggled it, then reinstalled, or the
+  // registry entry may have been cleared by something else.
+  applyLaunchAtLogin(store.get().app.launchAtLogin)
 
   supervisor.on('state', (state) => broadcast('state', state))
   supervisor.on('toast', (toast) => broadcast('toast', toast))
@@ -29,6 +35,10 @@ export function registerIpc(
     const next = store.update(patch)
     broadcast('settings', next)
     supervisor.updateSettings(next)
+    onSettingsChanged()
+    if (patch.app?.launchAtLogin !== undefined) {
+      applyLaunchAtLogin(next.app.launchAtLogin)
+    }
     if (patch.audio) {
       // Live change — restarting the capture page mid-recording would break the
       // ring, so gains move instead.
@@ -65,6 +75,13 @@ export function registerIpc(
 
   ipcMain.handle('clips:list', () => listClips(outputDir()))
 
+  // Generated on demand rather than during the listing, so the gallery paints
+  // immediately and fills in as frames arrive.
+  ipcMain.handle('clips:thumbnail', async (_e, path: string, mtimeMs: number) => {
+    const thumb = await thumbnailFor(path, mtimeMs)
+    return thumb ? `file://${thumb.replace(/\\/g, '/')}` : null
+  })
+
   ipcMain.handle('clips:reveal', (_e, path: string) => shell.showItemInFolder(path))
   ipcMain.handle('clips:open', (_e, path: string) => shell.openPath(path))
   ipcMain.handle('clips:delete', async (_e, path: string) => {
@@ -86,9 +103,16 @@ export function registerIpc(
   ipcMain.on('window:close', (e) => BrowserWindow.fromWebContents(e.sender)?.close())
 }
 
+/** Starts hidden — an autostarted recorder that throws a window in your face
+ *  on every boot is a recorder people uninstall. */
+function applyLaunchAtLogin(enabled: boolean): void {
+  app.setLoginItemSettings({
+    openAtLogin: enabled,
+    args: ['--hidden']
+  })
+}
+
 function defaultOutputDir(): string {
-  // Resolved lazily so tests can point it elsewhere without importing electron.
-  const { app } = require('electron') as typeof import('electron')
   return join(app.getPath('videos'), 'Capture Assistant')
 }
 
