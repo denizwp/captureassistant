@@ -59,10 +59,15 @@ export interface RingArgsInput {
   /** Continues numbering across a respawn so the janitor's index stays sane. */
   startNumber: number
   drawMouse: boolean
+  /** Named pipe carrying interleaved f32le: system L/R then mic L/R. Null when
+   *  the user has turned both sources off. */
+  audioPipe: string | null
+  /** Also write System and Mic as their own tracks alongside the mix. */
+  separateTracks: boolean
 }
 
 export function buildRingArgs(input: RingArgsInput): string[] {
-  const { capture, encoder, outputIdx, ringDir, startNumber, drawMouse } = input
+  const { capture, encoder, outputIdx, ringDir, startNumber, drawMouse, audioPipe } = input
   const maxrateKbps =
     capture.bitrateKbps > 0 ? capture.bitrateKbps : PRESET_MAXRATE_KBPS[capture.preset]
 
@@ -88,10 +93,28 @@ export function buildRingArgs(input: RingArgsInput): string[] {
     // or returns black when the capturing process is on a different adapter.
     '-init_hw_device', `d3d11va=dda:${outputIdx}`,
     '-filter_hw_device', 'dda',
-    '-filter_complex', `${source}[v]`,
-    '-map', '[v]',
+
+    ...(audioPipe
+      ? [
+          // A large queue because the ring writes can hitch; without it ffmpeg
+          // stalls the whole graph with "thread message queue blocking".
+          '-thread_queue_size', '512',
+          '-f', 'f32le',
+          '-ar', '48000',
+          '-ac', '4',
+          // Stated rather than guessed, so ffmpeg does not warn and the
+          // channelsplit below has a layout it can rely on.
+          '-channel_layout', 'quad',
+          '-i', audioPipe
+        ]
+      : []),
+
+    '-filter_complex',
+    audioPipe ? `${source}[v];${audioGraph(input.separateTracks)}` : `${source}[v]`,
+    ...audioMaps(input),
 
     ...encoderArgs(encoder, capture, maxrateKbps),
+    ...(audioPipe ? ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000'] : []),
 
     '-fps_mode', 'cfr',
     '-max_muxing_queue_size', '2048',
@@ -100,6 +123,48 @@ export function buildRingArgs(input: RingArgsInput): string[] {
 
     ...segmentArgs(ringDir, startNumber)
   ]
+}
+
+/**
+ * Splits the four-channel pipe back into a system pair and a mic pair, then
+ * mixes them into the track everything plays by default.
+ *
+ * `normalize=0` is essential: amix's default normalisation divides by the input
+ * count, so enabling the mic would silently halve the game audio. `alimiter`
+ * catches the sum clipping instead. Each pair is `asplit`, because a filter
+ * output can only be consumed once and the pairs are needed both by the mix
+ * and as standalone tracks.
+ */
+function audioGraph(separateTracks: boolean): string {
+  // Every filter output must be consumed, so the pairs are only split when the
+  // standalone tracks are actually going to be mapped. Splitting
+  // unconditionally makes ffmpeg refuse the graph outright.
+  const split = separateTracks
+    ? [
+        '[sl][sr]join=inputs=2:channel_layout=stereo,asplit=2[sysmix][sys]',
+        '[ml][mr]join=inputs=2:channel_layout=stereo,asplit=2[micmix][mic]'
+      ]
+    : [
+        '[sl][sr]join=inputs=2:channel_layout=stereo[sysmix]',
+        '[ml][mr]join=inputs=2:channel_layout=stereo[micmix]'
+      ]
+
+  return [
+    // Input 0, not 1: `ddagrab` is a source filter inside the graph and
+    // consumes no input file, so the audio pipe is the only `-i`.
+    '[0:a]channelsplit=channel_layout=quad[sl][sr][ml][mr]',
+    ...split,
+    '[sysmix][micmix]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.97[amix]'
+  ].join(';')
+}
+
+/** Track 0 is always the mix, so every player and Discord work out of the box;
+ *  the separate pair rides along for editing. */
+function audioMaps(input: RingArgsInput): string[] {
+  if (!input.audioPipe) return ['-map', '[v]']
+  const maps = ['-map', '[v]', '-map', '[amix]']
+  if (input.separateTracks) maps.push('-map', '[sys]', '-map', '[mic]')
+  return maps
 }
 
 function encoderArgs(
@@ -255,6 +320,8 @@ export function buildHeadArgs(opts: {
     '-ss', startTime.toFixed(6),
     '-map', '0',
     ...encoderArgs(encoder, capture, maxrateKbps),
+    '-c:a', 'aac',
+    '-b:a', '192k',
     '-output_ts_offset', startTime.toFixed(6),
     '-muxdelay', '0',
     '-muxpreload', '0',
