@@ -9,6 +9,7 @@ import { TrayController } from './tray'
 import { HotkeyManager } from './hotkeys'
 import { Overlay } from './overlay'
 import { warnIfHotkeysBlocked } from './elevation'
+import { warnIfHdr } from './hdr'
 import { pruneThumbnails } from './thumbnails'
 import { Hud } from './hud'
 import { runAudioSelfTest } from './audio-selftest'
@@ -113,6 +114,7 @@ if (!singleInstance) {
         void warnIfHotkeysBlocked((message) =>
           broadcast('toast', { kind: 'warning', message })
         )
+        warnIfHdr((message) => broadcast('toast', { kind: 'warning', message }))
       }
     })
 
