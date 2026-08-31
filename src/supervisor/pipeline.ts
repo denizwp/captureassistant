@@ -37,7 +37,6 @@ export interface RingArgsInput {
   drawMouse: boolean
 
   audioPipe: string | null
-  separateTracks: boolean
 }
 
 export function buildRingArgs(input: RingArgsInput): string[] {
@@ -76,7 +75,7 @@ export function buildRingArgs(input: RingArgsInput): string[] {
       : []),
 
     '-filter_complex',
-    audioPipe ? `${source}[v];${audioGraph(input.separateTracks)}` : `${source}[v]`,
+    audioPipe ? `${source}[v];${audioGraph()}` : `${source}[v]`,
     ...audioMaps(input),
 
     ...encoderArgs(encoder, capture, maxrateKbps),
@@ -91,30 +90,20 @@ export function buildRingArgs(input: RingArgsInput): string[] {
   ]
 }
 
-function audioGraph(separateTracks: boolean): string {
-  const split = separateTracks
-    ? [
-        '[sl][sr]join=inputs=2:channel_layout=stereo,asplit=2[sysmix][sys]',
-        '[ml][mr]join=inputs=2:channel_layout=stereo,asplit=2[micmix][mic]'
-      ]
-    : [
-        '[sl][sr]join=inputs=2:channel_layout=stereo[sysmix]',
-        '[ml][mr]join=inputs=2:channel_layout=stereo[micmix]'
-      ]
-
+function audioGraph(): string {
   return [
     '[0:a]channelsplit=channel_layout=quad[sl][sr][ml][mr]',
-    ...split,
-
-    '[sysmix][micmix]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.97[amix]'
+    '[sl][sr]join=inputs=2:channel_layout=stereo[sys]',
+    '[ml][mr]join=inputs=2:channel_layout=stereo[mic]',
+    // normalize=0 matters: the default divides by the input count, so turning
+    // the microphone on would quietly halve the game.
+    '[sys][mic]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.97[amix]'
   ].join(';')
 }
 
 function audioMaps(input: RingArgsInput): string[] {
   if (!input.audioPipe) return ['-map', '[v]']
-  const maps = ['-map', '[v]', '-map', '[amix]']
-  if (input.separateTracks) maps.push('-map', '[sys]', '-map', '[mic]')
-  return maps
+  return ['-map', '[v]', '-map', '[amix]']
 }
 
 function encoderArgs(
