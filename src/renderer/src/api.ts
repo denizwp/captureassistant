@@ -15,6 +15,7 @@ interface CaptureApi {
   getState(): Promise<SupervisorState>
   listMonitors(): Promise<MonitorInfo[]>
   chooseDirectory(current: string | null): Promise<string | null>
+  listMicDevices(): Promise<{ id: string; label: string }[]>
   listClips(): Promise<Clip[]>
   clipMeta(
     path: string,
