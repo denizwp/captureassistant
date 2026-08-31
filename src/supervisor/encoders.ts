@@ -76,13 +76,27 @@ async function smokeTest(ffmpeg: string, id: string): Promise<string | null> {
   }
 }
 
-export async function probeCapture(ffmpeg: string, outputIdx: number): Promise<string | null> {
+export interface CaptureProbe {
+  adapterIdx: number
+  outputIdx: number
+  error: string | null
+}
+
+const MAX_ADAPTERS = 4
+const MAX_OUTPUTS = 4
+
+async function grabsFrames(
+  ffmpeg: string,
+  adapterIdx: number,
+  outputIdx: number
+): Promise<string | null> {
   const args = [
     '-hide_banner',
     '-loglevel', 'error',
-    '-init_hw_device', `d3d11va=dda:${outputIdx}`,
+    '-init_hw_device', `d3d11va=dda:${adapterIdx}`,
     '-filter_hw_device', 'dda',
-    '-filter_complex', `ddagrab=output_idx=${outputIdx}:framerate=30:allow_fallback=1,hwdownload,format=bgra[v]`,
+    '-filter_complex',
+    `ddagrab=output_idx=${outputIdx}:framerate=30:allow_fallback=1,hwdownload,format=bgra[v]`,
     '-map', '[v]',
     '-frames:v', '4',
     '-f', 'null',
@@ -95,4 +109,34 @@ export async function probeCapture(ffmpeg: string, outputIdx: number): Promise<s
     const stderr = (error as { stderr?: string }).stderr ?? String(error)
     return stderr.trim().split('\n').at(-1)?.slice(0, 200) ?? 'ekran yakalanamadı'
   }
+}
+
+/*
+ * -init_hw_device d3d11va=dda:N picks a DXGI *adapter*, while ddagrab's
+ * output_idx picks a *monitor* on that adapter — separate namespaces that used
+ * to get the same number. The requested output is also only a guess, since the
+ * desktop layout does not have to match the order the driver enumerates its
+ * connectors in, so fall back to scanning when it comes up empty.
+ */
+export async function probeCapture(
+  ffmpeg: string,
+  outputIdx: number
+): Promise<CaptureProbe> {
+  let firstError: string | null = null
+
+  for (let adapterIdx = 0; adapterIdx < MAX_ADAPTERS; adapterIdx++) {
+    const error = await grabsFrames(ffmpeg, adapterIdx, outputIdx)
+    if (!error) return { adapterIdx, outputIdx, error: null }
+    if (firstError === null) firstError = error
+  }
+
+  for (let output = 0; output < MAX_OUTPUTS; output++) {
+    if (output === outputIdx) continue
+    for (let adapterIdx = 0; adapterIdx < MAX_ADAPTERS; adapterIdx++) {
+      const error = await grabsFrames(ffmpeg, adapterIdx, output)
+      if (!error) return { adapterIdx, outputIdx: output, error: null }
+    }
+  }
+
+  return { adapterIdx: 0, outputIdx, error: firstError ?? 'ekran yakalanamadı' }
 }

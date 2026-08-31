@@ -40,6 +40,7 @@ let ringDir = ''
 let outDir = ''
 let audioPipe = ''
 let outputIdx = 0
+let adapterIdx = 0
 let ring: Ring | null = null
 let encoder: EncoderChoice | null = null
 
@@ -102,6 +103,7 @@ async function startEncoder(): Promise<void> {
     capture: settings.capture,
     encoder,
     outputIdx,
+    adapterIdx,
     ringDir,
     startNumber: ring.nextSegmentNumber,
     drawMouse: true,
@@ -233,11 +235,21 @@ async function ensureEncoder(): Promise<boolean> {
   if (encoder || !settings) return !!encoder
 
   log('probing encoders…')
-  const captureError = await probeCapture(ffmpegPath, outputIdx)
-  if (captureError) {
-    fail(`Ekran yakalanamadı: ${captureError}`)
+  const capture = await probeCapture(ffmpegPath, outputIdx)
+  if (capture.error) {
+    log(`capture probe failed: ${capture.error}`, 'error')
+    fail(
+      'Ekran yakalanamadı. Ekran kaydı bu makinede Desktop Duplication ile ' +
+        'açılamıyor — dizüstünde hibrit ekran kartı veya sürücü sorunu olabilir.'
+    )
     return false
   }
+  adapterIdx = capture.adapterIdx
+  if (capture.outputIdx !== outputIdx) {
+    log(`display ${outputIdx} gave no frames, using display ${capture.outputIdx}`, 'warning')
+    outputIdx = capture.outputIdx
+  }
+  if (adapterIdx !== 0) log(`capturing through adapter ${adapterIdx}`, 'warning')
 
   const result = await probeEncoder(ffmpegPath, settings.capture.codec)
   for (const item of result.rejected) log(`${item.id}: ${item.reason}`, 'warning')
@@ -286,7 +298,7 @@ async function startRecording(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
 
-  recordStart = ring?.newestEnd ?? 0
+  recordStart = ring?.liveEnd ?? 0
   recordStartedAt = Date.now()
   ring?.pin(ring.nextSegmentNumber, null, 'recording')
   state = 'recording'
@@ -296,13 +308,16 @@ async function startRecording(): Promise<void> {
 
 async function stopRecording(): Promise<void> {
   if (state !== 'recording' || !ring || !settings || !encoder) return
+
+  // Read the cut points before anything is awaited, or the clip drifts behind
+  // whatever the wait costs us.
   const from = recordStart ?? 0
+  const to = ring.liveEnd
   recordStart = null
   state = settings.replay.enabled ? 'armed' : 'idle'
   await publish()
 
-  await ring.poll()
-  const to = ring.newestEnd
+  await waitForSegment(to)
   ring.unpin('recording')
 
   await buildClip(from, to, 'Kayıt')
@@ -313,6 +328,20 @@ async function stopRecording(): Promise<void> {
     ring = null
   }
   await publish()
+}
+
+/*
+ * A cut point is only usable once the segment covering it has been written out,
+ * so hold until index.csv catches up with it.
+ */
+async function waitForSegment(target: number): Promise<void> {
+  if (!ring) return
+  const deadline = Date.now() + (SEGMENT_SEC * 2 + 5) * 1000
+  await ring.poll()
+  while (ring.newestEnd < target && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    await ring.poll()
+  }
 }
 
 async function saveReplay(): Promise<void> {
@@ -332,15 +361,7 @@ async function saveReplay(): Promise<void> {
   }
 
   const postRoll = Math.max(0, settings.replay.postRollSec)
-  if (postRoll > 0) {
-    const target = ring.newestEnd + postRoll
-    const deadline = Date.now() + (postRoll + SEGMENT_SEC + 2) * 1000
-    while (Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 250))
-      await ring.poll()
-      if (ring.newestEnd >= target) break
-    }
-  }
+  if (postRoll > 0) await waitForSegment(ring.liveEnd + postRoll)
 
   const to = ring.newestEnd
   const from = to - settings.replay.durationSec
@@ -467,6 +488,7 @@ async function handle(message: Incoming): Promise<void> {
 
       if (message.outputIdx !== undefined && message.outputIdx !== outputIdx) {
         outputIdx = message.outputIdx
+        adapterIdx = 0
         encoder = null
         if (state !== 'idle') {
           log(`display changed, restarting encoder on output ${outputIdx}`, 'warning')
