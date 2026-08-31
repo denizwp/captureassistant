@@ -7,8 +7,14 @@ const preload = join(__dirname, '../preload/index.js')
 
 /** Packaged builds ship `resources/` next to the app; in dev it sits at the
  *  project root, two levels up from the bundled main process. */
-const packagedIcon = join(process.resourcesPath, 'icon.png')
-const icon = existsSync(packagedIcon) ? packagedIcon : join(__dirname, '../../resources/icon.png')
+function resource(name: string): string {
+  const packaged = join(process.resourcesPath, name)
+  return existsSync(packaged) ? packaged : join(__dirname, '../../resources', name)
+}
+
+// .ico carries every size Windows asks for; a lone PNG gets scaled badly in
+// the taskbar and alt-tab.
+const icon = resource('icon.ico')
 
 /** electron-vite serves renderers from a dev server; in production they are
  *  static files next to the main bundle. */

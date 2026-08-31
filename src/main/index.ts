@@ -34,6 +34,7 @@ if (!singleInstance) {
   })
 
   app.whenReady().then(() => {
+    app.setAppUserModelId('com.captureassistant.app')
     registerIpc(store)
     createMainWindow(store)
 
