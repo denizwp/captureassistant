@@ -1,0 +1,43 @@
+appId: com.captureassistant.app
+productName: Capture Assistant
+copyright: Capture Assistant
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+
+# ffmpeg.exe and ffprobe.exe live here, plus the icons the tray and windows
+# load at runtime. Copied next to the app rather than into the asar so ffmpeg
+# can be spawned as a normal executable.
+extraResources:
+  - from: resources
+    to: .
+    filter:
+      - '**/*'
+
+asar: true
+# Native addons cannot be loaded from inside an asar archive.
+asarUnpack:
+  - '**/*.node'
+  - '**/node_modules/uiohook-napi/**'
+
+# Portable rather than an installer: nothing here needs to touch the registry
+# or Program Files, and a self-extracting exe would unpack ~280MB of ffmpeg to
+# temp on every launch. Extract the zip once and run the exe.
+win:
+  target:
+    - target: zip
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: ${productName}-${version}-win-x64.${ext}
+
+publish:
+  provider: github
+  owner: denizwp
+  repo: captureassistant
+  releaseType: release
