@@ -113,3 +113,7 @@ CA_DEBUG_HOTKEYS=1 npx electron . # hook'un gördüğü her tuşu loglar
 
 Üçü de `%TEMP%` altına log yazıyor. Supervisor'ın yaşam döngüsü her zaman
 `%TEMP%\ca-supervisor.log`'a düşüyor.
+
+## Lisans
+
+MIT — [LICENSE](LICENSE).
