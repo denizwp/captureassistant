@@ -500,3 +500,13 @@
 /* Selection is the ring again, one step stronger than hover. */
 .clip.is-selected .clip__thumb { box-shadow: inset 0 0 0 2px var(--brand); }
 .clip.is-selected .clip__name { color: var(--text-strong); font-weight: var(--fw-medium); }
+
+/* Until a frame is extracted the card shows a mark rather than an empty hole. */
+.clip__placeholder {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 24px;
+    color: var(--text-inactive);
+}

@@ -7,6 +7,7 @@ import art from '../../assets/character-panel.png'
 export function ClipsScreen() {
   const [clips, setClips] = useState<Clip[]>([])
   const [selected, setSelected] = useState<string | null>(null)
+  const [thumbs, setThumbs] = useState<Record<string, string>>({})
 
   const refresh = useCallback(() => {
     void api.listClips().then(setClips)
@@ -16,6 +17,20 @@ export function ClipsScreen() {
     refresh()
     return api.on('clips', (payload) => setClips(payload as Clip[]))
   }, [refresh])
+
+  // Fetched after the list renders so the gallery never waits on ffmpeg.
+  useEffect(() => {
+    let cancelled = false
+    for (const clip of clips) {
+      if (thumbs[clip.id]) continue
+      void api.clipThumbnail(clip.path, clip.createdAt).then((url) => {
+        if (!cancelled && url) setThumbs((current) => ({ ...current, [clip.id]: url }))
+      })
+    }
+    return () => {
+      cancelled = true
+    }
+  }, [clips, thumbs])
 
   const active = clips.find((clip) => clip.id === selected) ?? null
 
@@ -89,7 +104,11 @@ export function ClipsScreen() {
                   onDoubleClick={() => void api.openClip(clip.path)}
                 >
                   <span className="clip__thumb">
-                    {clip.thumbnailPath ? <img src={clip.thumbnailPath} alt="" /> : null}
+                    {thumbs[clip.id] ? (
+                      <img src={thumbs[clip.id]} alt="" loading="lazy" />
+                    ) : (
+                      <i className="ph ph-film-slate clip__placeholder" />
+                    )}
                   </span>
                   <span className="clip__name">{clip.name}</span>
                   <span className="clip__meta">
