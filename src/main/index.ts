@@ -11,7 +11,7 @@ import { Overlay } from './overlay'
 import { warnIfHotkeysBlocked } from './elevation'
 import { warnIfHdr } from './hdr'
 import { pruneThumbnails } from './thumbnails'
-import { checkForUpdate, discardOldBuild } from './updater'
+import { checkForUpdate, discardOldBuild, runUpdateSelfTest } from './updater'
 import { Hud } from './hud'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
@@ -36,6 +36,12 @@ if (!singleInstance) {
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(permission === 'media')
     })
+
+    if (process.argv.includes('--update-test')) {
+      await runUpdateSelfTest()
+      app.quit()
+      return
+    }
 
     if (process.argv.includes('--audio-test')) {
       await runAudioSelfTest(audio, store)

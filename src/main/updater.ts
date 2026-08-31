@@ -1,11 +1,12 @@
 import { app, dialog } from 'electron'
-import { createWriteStream } from 'node:fs'
-import { rename, rm, stat } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { appendFileSync, createWriteStream, writeFileSync } from 'node:fs'
+import { rm, stat, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
 const REPO = 'denizwp/captureassistant'
-const OLD_SUFFIX = '.old'
 
 interface Release {
   version: string
@@ -67,10 +68,41 @@ async function download(release: Release, target: string): Promise<void> {
   }
 }
 
+/*
+ * The portable launcher keeps its own exe open for as long as the app runs, so
+ * it can be neither overwritten nor renamed from inside. Hand the swap to a
+ * detached script that retries the move until we are gone.
+ */
+async function scheduleSwap(exe: string, staged: string, relaunch: boolean): Promise<void> {
+  const script = join(app.getPath('temp'), 'ca-apply-update.cmd')
+  const lines = [
+    '@echo off',
+    'set /a tries=0',
+    ':retry',
+    `move /y "${staged}" "${exe}" >nul 2>&1`,
+    'if not errorlevel 1 goto done',
+    'set /a tries+=1',
+    'if %tries% geq 60 goto give_up',
+    'ping -n 2 127.0.0.1 >nul',
+    'goto retry',
+    ':done',
+    ...(relaunch ? [`start "" "${exe}"`] : []),
+    'goto cleanup',
+    ':give_up',
+    `del "${staged}" >nul 2>&1`,
+    ':cleanup',
+    'del "%~f0" >nul 2>&1'
+  ]
+
+  await writeFile(script, `${lines.join('\r\n')}\r\n`, 'utf8')
+  spawn('cmd.exe', ['/c', script], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+}
+
 export async function discardOldBuild(): Promise<void> {
   const exe = portableExe()
   if (!exe) return
-  await rm(`${exe}${OLD_SUFFIX}`, { force: true }).catch(() => undefined)
+  await rm(`${exe}.new`, { force: true }).catch(() => undefined)
+  await rm(`${exe}.old`, { force: true }).catch(() => undefined)
 }
 
 export async function checkForUpdate(): Promise<void> {
@@ -96,9 +128,7 @@ export async function checkForUpdate(): Promise<void> {
   const staged = `${exe}.new`
   try {
     await download(release, staged)
-    // Windows will not overwrite a running exe but it will happily rename one.
-    await rename(exe, `${exe}${OLD_SUFFIX}`)
-    await rename(staged, exe)
+    await scheduleSwap(exe, staged, true)
   } catch (error) {
     await rm(staged, { force: true }).catch(() => undefined)
     await dialog.showMessageBox({
@@ -110,6 +140,45 @@ export async function checkForUpdate(): Promise<void> {
     return
   }
 
-  app.relaunch({ execPath: exe })
   app.exit(0)
+}
+
+export async function runUpdateSelfTest(): Promise<void> {
+  const logPath = join(app.getPath('temp'), 'ca-update-selftest.log')
+  writeFileSync(logPath, '')
+  const log = (message: string): void => appendFileSync(logPath, `${message}\n`)
+  log(`log: ${logPath}`)
+
+  const exe = portableExe()
+  log(`packaged: ${app.isPackaged}`)
+  log(`PORTABLE_EXECUTABLE_FILE: ${exe ?? 'NOT SET'}`)
+  log(`running version: ${app.getVersion()}`)
+  if (!exe) {
+    log('FAILED: no portable path, an update could never be applied')
+    return
+  }
+
+  const release = await latestRelease().catch(() => null)
+  if (!release) {
+    log('FAILED: no release found')
+    return
+  }
+  log(`latest release: ${release.version} (${release.size} bytes)`)
+  if (!isNewer(release.version, app.getVersion())) {
+    log('nothing to do, already current')
+    return
+  }
+
+  const before = await stat(exe)
+  log(`exe before: ${before.size} bytes`)
+
+  const staged = `${exe}.new`
+  try {
+    await download(release, staged)
+    log(`downloaded to ${staged}`)
+    await scheduleSwap(exe, staged, false)
+    log('swap scheduled, quitting so it can run')
+  } catch (error) {
+    log(`FAILED: ${String(error instanceof Error ? error.message : error)}`)
+  }
 }
