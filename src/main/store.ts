@@ -54,3 +54,20 @@ export class SettingsStore {
     renameSync(tmp, this.file)
   }
 }
+
+export async function discardLegacyUserData(): Promise<void> {
+  const { app } = await import('electron')
+  const { rm, stat } = await import('node:fs/promises')
+
+  const current = app.getPath('userData')
+  const legacy = join(dirname(current), 'capture-assistant')
+  if (legacy.toLowerCase() === current.toLowerCase()) return
+
+  const exists = await stat(legacy).then(
+    (info) => info.isDirectory(),
+    () => false
+  )
+  if (!exists) return
+
+  await rm(legacy, { recursive: true, force: true }).catch(() => undefined)
+}

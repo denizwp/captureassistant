@@ -19,8 +19,6 @@ export function AudioScreen({
   const [devices, setDevices] = useState<{ id: string; label: string }[]>([])
 
   useEffect(() => {
-    // The list only exists once the capture page has run enumerateDevices, so
-    // ask again whenever the mic is switched on.
     void api.listMicDevices().then(setDevices)
     const timer = setTimeout(() => void api.listMicDevices().then(setDevices), 1200)
     return () => clearTimeout(timer)

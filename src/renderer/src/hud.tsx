@@ -49,9 +49,6 @@ function Hud() {
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
 
   const refresh = useCallback(() => {
-    // Retried on failure rather than fetched once: this page can load before
-    // the main process has registered its handlers, and without a retry it
-    // would sit blank forever.
     api.getSettings().then(setSettings, () => setTimeout(refresh, 250))
     void api.getState().then(setState, () => undefined)
     void api.listClips().then((list) => setClips(list.slice(0, 3)), () => undefined)
@@ -62,8 +59,7 @@ function Hud() {
     const offState = api.on('state', (p) => setState(p as SupervisorState))
     const offSettings = api.on('settings', (p) => setSettings(p as Settings))
     const offClips = api.on('clips', (p) => setClips((p as Clip[]).slice(0, 3)))
-    // The window is hidden rather than destroyed, so a fresh read on every show
-    // is what keeps it current.
+
     const onShow = (): void => refresh()
     window.addEventListener('focus', onShow)
     return () => {

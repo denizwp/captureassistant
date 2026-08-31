@@ -207,9 +207,7 @@ export class Ring {
     const free = await statfs(this.dir)
       .then((s) => s.bavail * s.bsize)
       .catch(() => 0)
-    // The segment being written right now holds real footage, it just is not
-    // indexed until the muxer closes it. Counting it keeps the readout moving
-    // every second instead of jumping two at a time.
+
     const inProgress =
       this.lastSegmentAt > 0
         ? Math.min(SEGMENT_SEC, (Date.now() - this.lastSegmentAt) / 1000)

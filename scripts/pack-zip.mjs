@@ -1,13 +1,3 @@
-/*
- * Packages the app and zips it.
- *
- * electron-builder is run for the unpacked directory only, and its exit code is
- * deliberately not trusted: on this machine it always fails while re-extracting
- * its winCodeSign cache, because that archive contains macOS symlinks and
- * Windows will not create those without Developer Mode or elevation. The app
- * itself packages correctly regardless, so what matters is whether the output
- * is actually there. Its own zip target never gets that far, hence 7za here.
- */
 import { execFile } from 'node:child_process'
 import { readFile, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -46,8 +36,6 @@ async function main() {
   const exe = await stat(join(unpacked, 'Capture Assistant.exe')).catch(() => null)
   if (!exe) throw new Error('release/win-unpacked has no executable')
 
-  // The supervisor runs as a utilityProcess, which cannot load its entry from
-  // inside the asar; if this is missing the app boots into a restart loop.
   const supervisor = await stat(
     join(unpacked, 'resources', 'app.asar.unpacked', 'out', 'main', 'supervisor.js')
   ).catch(() => null)
@@ -58,7 +46,7 @@ async function main() {
 
   await rm(out, { force: true })
   console.log('zipping…')
-  // `.\*` keeps the archive rooted at the app rather than nesting win-unpacked.
+
   await run(sevenZip, ['a', '-tzip', '-mx=5', out, '.\\*'], {
     cwd: unpacked,
     maxBuffer: 32 * 1024 * 1024

@@ -15,8 +15,6 @@ declare global {
   }
 }
 
-
-
 const rec = document.getElementById('rec')
 const replay = document.getElementById('replay')
 const mic = document.getElementById('mic')

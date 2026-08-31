@@ -20,10 +20,10 @@ Arka planda sürekli son birkaç dakikayı tutar, diske ise yalnızca senin
 istediğinde yazar. `Alt+F10`'a bastığında **geçmiş** N dakika klip olarak
 kaydedilir — kaydı önceden başlatmış olman gerekmez.
 
-Yanında düz kayıt de var: `Alt+F9` ile başlat, tekrar basıp bitir.
+Normal kayıt için: `Alt+F9` ile başlat, tekrar basıp bitir.
 
 Tampon ve manuel kayıt aynı encoder üzerinden çalışır. Yani tampon açıkken kayıt
-almanın ek bir maliyeti yok.
+almanın ek bir maliyeti olmaz.
 
 ## Kurulum
 
@@ -78,21 +78,6 @@ canlı gösteriliyor; disk dolmaya başlarsa uygulama tamponu kendisi durduruyor
 
 Donanım encoder'ı yoksa `libx264`'e düşüyor ama yazılım encode 1080p60'ta oyundan
 gözle görülür kare götürüyor; o durumda uygulama 1080p30'da sınırlıyor.
-
-## Yapamadıkları
-
-- **Yalnızca tam ekran yakalıyor.** Tek pencere yakalamak
-  Windows.Graphics.Capture istiyor, henüz yazılmadı.
-- **Rozetler kayda giriyor.** Bir pencereyi Desktop Duplication'dan çıkarmanın
-  yolu `SetWindowDisplayAffinity`; Electron'un `setContentProtection`'ı burada
-  `WDA_MONITOR` uyguluyor, yani pencereyi gizlemek yerine yerine siyah dikdörtgen
-  koyuyor. Rozetin görünmesi bundan iyi olduğu için kullanılmıyor. Ayarlardan
-  rozetleri sürekli göstermeyi kapatırsan yalnızca durum değişiminde belirirler.
-- **Oyun içi panel enjeksiyon kullanmıyor.** Her zaman üstte duran bir pencere;
-  borderless ve pencereli oyunlarda görünür, gerçek exclusive fullscreen'de
-  görünmez. Oyunun swapchain'ine hook atmak anti-cheat'lerin ban sebebi olduğu
-  için tercih edilmedi.
-- **HDR, SDR'a ton eşleniyor.** Passthrough yok.
 
 ## Nasıl çalışıyor
 

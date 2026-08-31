@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { execFile } from 'node:child_process'
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -71,4 +71,24 @@ export async function durationFor(clipPath: string, mtimeMs: number): Promise<nu
   } catch {
     return 0
   }
+}
+
+const MAX_THUMBS = 300
+
+export async function pruneThumbnails(): Promise<number> {
+  const dir = cacheDir()
+  const names = await readdir(dir).catch(() => [] as string[])
+  if (names.length <= MAX_THUMBS) return 0
+
+  const entries = await Promise.all(
+    names.map(async (name) => {
+      const path = join(dir, name)
+      const info = await stat(path).catch(() => null)
+      return { path, mtime: info?.mtimeMs ?? 0 }
+    })
+  )
+
+  const stale = entries.sort((a, b) => b.mtime - a.mtime).slice(MAX_THUMBS)
+  for (const entry of stale) await rm(entry.path, { force: true }).catch(() => undefined)
+  return stale.length
 }

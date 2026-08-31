@@ -20,7 +20,13 @@ interface InitMessage {
 
 type Incoming =
   | InitMessage
-  | { type: 'settings'; settings: Settings; outputIdx?: number }
+  | {
+      type: 'settings'
+      settings: Settings
+      outputIdx?: number
+      ringDir?: string
+      outDir?: string
+    }
   | { type: 'arm'; enabled: boolean }
   | { type: 'record'; start: boolean }
   | { type: 'save-replay' }
@@ -325,9 +331,6 @@ async function saveReplay(): Promise<void> {
     return
   }
 
-  // Keep recording for a moment past the keypress, then wait for the muxer to
-  // close a segment covering it. Without this the clip stops at the instant the
-  // key went down, which cuts the thing you pressed it for.
   const postRoll = Math.max(0, settings.replay.postRollSec)
   if (postRoll > 0) {
     const target = ring.newestEnd + postRoll
@@ -397,13 +400,24 @@ function fileName(label: string): string {
     .replace(/\{date\}/g, date)
     .replace(/\{time\}/g, time)
 
-  // Anything Windows will not accept in a filename.
   return name.replace(/[<>:"/\|?*]/g, '-').replace(/\s+/g, ' ').trim() || `${label} ${date}`
 }
 
+/*
+ * Messages are handled strictly one at a time.
+ *
+ * Without this, `arm` could start running while `init` was still going, and
+ * init's orphan sweep would then delete the segments and index.csv that the
+ * encoder it raced with had just started writing. The buffer stayed silently
+ * empty and 30MB of live files went missing on every launch.
+ */
+let queue: Promise<void> = Promise.resolve()
+
 port?.on('message', (event) => {
   const message = event.data as Incoming
-  void handle(message).catch((error: unknown) => fail(String(error)))
+  queue = queue
+    .then(() => handle(message))
+    .catch((error: unknown) => fail(String(error)))
 })
 
 async function handle(message: Incoming): Promise<void> {
@@ -434,6 +448,23 @@ async function handle(message: Incoming): Promise<void> {
     case 'settings': {
       const previous = settings
       settings = message.settings
+      if (message.outDir) outDir = message.outDir
+
+      // Moving the buffer elsewhere leaves the old folder full of segments that
+      // nothing would ever clean, so sweep it on the way out.
+      if (message.ringDir && message.ringDir !== ringDir) {
+        const previous = ringDir
+        const wasArmed = state !== 'idle'
+        if (wasArmed) await setArmed(false)
+        const swept = await sweepOrphans(previous)
+        if (swept.files > 0) {
+          log(`moved buffer, cleared ${swept.files} file(s) from ${previous}`, 'warning')
+        }
+        ringDir = message.ringDir
+        await mkdir(ringDir, { recursive: true })
+        if (wasArmed) await setArmed(true)
+      }
+
       if (message.outputIdx !== undefined && message.outputIdx !== outputIdx) {
         outputIdx = message.outputIdx
         encoder = null
@@ -444,7 +475,22 @@ async function handle(message: Incoming): Promise<void> {
         }
       }
 
-      if (previous && previous.capture.codec !== settings.capture.codec) encoder = null
+      const capture = settings.capture
+      const before = previous?.capture
+      if (before && before.codec !== capture.codec) encoder = null
+
+      const qualityChanged =
+        !!before &&
+        (before.codec !== capture.codec ||
+          before.fps !== capture.fps ||
+          before.preset !== capture.preset ||
+          before.bitrateKbps !== capture.bitrateKbps)
+
+      if (qualityChanged && state !== 'idle') {
+        log('quality changed, restarting encoder', 'warning')
+        await stopEncoder()
+        if (await ensureEncoder()) await startEncoder()
+      }
 
       await publish()
       break

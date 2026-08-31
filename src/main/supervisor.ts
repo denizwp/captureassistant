@@ -7,12 +7,6 @@ import type { Settings } from '@shared/settings'
 import { INITIAL_STATE, type SupervisorState } from '@shared/state'
 import { AUDIO_PIPE } from './audio'
 
-/**
- * Electron gives display ids; ddagrab wants a DXGI output index. There is no
- * API that maps between them, but DXGI enumerates outputs in desktop layout
- * order, so position in a left-to-right, top-to-bottom sort is the closest
- * thing to a mapping without a native module.
- */
 export function outputIndexFor(monitorId: string | null): number {
   const displays = [...screen.getAllDisplays()].sort(
     (a, b) => a.bounds.x - b.bounds.x || a.bounds.y - b.bounds.y
@@ -24,6 +18,14 @@ export function outputIndexFor(monitorId: string | null): number {
   return Math.max(0, displays.findIndex((d) => String(d.id) === monitorId))
 }
 
+export function ringDirFor(settings: Settings): string {
+  return settings.replay.bufferDir ?? join(app.getPath('userData'), 'ring')
+}
+
+export function outDirFor(settings: Settings): string {
+  return settings.output.dir ?? join(app.getPath('videos'), 'Capture Assistant')
+}
+
 export function ffmpegPath(): string {
   const packaged = join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe')
   return existsSync(packaged)
@@ -31,8 +33,6 @@ export function ffmpegPath(): string {
     : join(app.getAppPath(), 'resources', 'ffmpeg', 'ffmpeg.exe')
 }
 
-/** The supervisor failing is invisible from the UI — the buffer just never
- *  fills — so its exit codes and stderr always go to a file. */
 function trace(message: string): void {
   try {
     appendFileSync(
@@ -63,9 +63,6 @@ export class SupervisorHost extends EventEmitter {
     this.settings = settings
     this.stopped = false
 
-    // utilityProcess.fork needs a path it can actually open, and __dirname is
-    // inside app.asar in a packaged build. electron-builder puts a real copy in
-    // app.asar.unpacked for exactly this.
     const entry = join(__dirname, 'supervisor.js').replace(
       `${sep}app.asar${sep}`,
       `${sep}app.asar.unpacked${sep}`
@@ -112,8 +109,8 @@ export class SupervisorHost extends EventEmitter {
     this.send({
       type: 'init',
       ffmpeg: ffmpegPath(),
-      ringDir: settings.replay.bufferDir ?? join(app.getPath('userData'), 'ring'),
-      outDir: settings.output.dir ?? join(app.getPath('videos'), 'Capture Assistant'),
+      ringDir: ringDirFor(settings),
+      outDir: outDirFor(settings),
       audioPipe: AUDIO_PIPE,
       outputIdx: outputIndexFor(settings.capture.monitorId),
       settings
@@ -149,7 +146,9 @@ export class SupervisorHost extends EventEmitter {
     this.send({
       type: 'settings',
       settings,
-      outputIdx: outputIndexFor(settings.capture.monitorId)
+      outputIdx: outputIndexFor(settings.capture.monitorId),
+      ringDir: ringDirFor(settings),
+      outDir: outDirFor(settings)
     })
   }
 

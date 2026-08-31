@@ -163,8 +163,6 @@ export function broadcast(channel: string, payload: unknown): void {
     try {
       win.webContents.send(channel, payload)
     } catch {
-      // The render frame can be torn down between the check and the send; a
-      // status update is never worth taking the process down for.
     }
   }
 }

@@ -1,7 +1,8 @@
 .appbar { -webkit-app-region: drag; }
 .appbar button,
 .appbar .segmented,
-.appbar input { -webkit-app-region: no-drag; }
+.appbar input,
+.appbar a { -webkit-app-region: no-drag; }
 
 .wincontrols { display: flex; align-items: center; gap: 2px; }
 .wincontrols button {
@@ -323,9 +324,6 @@
     padding: var(--space-4) var(--space-5) var(--space-6);
     scrollbar-width: thin;
 
-    /* Fades the last rows so it reads as scrollable. Tied to the scroll
-       position, so it lifts at the bottom instead of dimming the final row for
-       good. */
     -webkit-mask-image: linear-gradient(
         to bottom,
         #000 calc(100% - var(--pane-fade)),
@@ -495,4 +493,21 @@
     place-items: center;
     font-size: 24px;
     color: var(--text-inactive);
+}
+
+.brand__by {
+    margin-left: var(--space-2-5);
+    padding-left: var(--space-2-5);
+    border-left: 1px solid var(--hairline);
+    font-size: var(--text-xs);
+    color: var(--text-inactive);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color var(--duration-fast) var(--ease-out);
+}
+.brand__by:hover { color: var(--brand); }
+.brand__by:focus-visible {
+    outline: none;
+    color: var(--brand);
+    text-decoration: underline;
 }

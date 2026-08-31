@@ -140,6 +140,16 @@ function Brand() {
       <span className="brand__word">
         Capture <em>Assistant</em>
       </span>
+      {}
+      <a
+        className="brand__by"
+        href="https://deniz.cyou/"
+        target="_blank"
+        rel="noreferrer"
+        title="deniz.cyou"
+      >
+        deniz.cyou
+      </a>
     </div>
   )
 }

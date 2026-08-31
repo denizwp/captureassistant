@@ -1,6 +1,6 @@
 import { app, session } from 'electron'
 import { join } from 'node:path'
-import { SettingsStore } from './store'
+import { discardLegacyUserData, SettingsStore } from './store'
 import { beginQuit, createMainWindow } from './windows'
 import { broadcast, registerIpc } from './ipc'
 import { AudioEngine } from './audio'
@@ -9,6 +9,7 @@ import { TrayController } from './tray'
 import { HotkeyManager } from './hotkeys'
 import { Overlay } from './overlay'
 import { warnIfHotkeysBlocked } from './elevation'
+import { pruneThumbnails } from './thumbnails'
 import { Hud } from './hud'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
@@ -60,15 +61,15 @@ if (!singleInstance) {
     }
 
     const actions = {
-      toggleReplay: (enabled: boolean) => {
-        if (enabled) void audio.start(store.get().audio)
+      toggleReplay: async (enabled: boolean) => {
+        if (enabled) await audio.start(store.get().audio)
         else audio.stop()
         store.update({ replay: { enabled } })
         supervisor.arm(enabled)
       },
-      toggleRecording: () => {
+      toggleRecording: async () => {
         const recording = supervisor.getState().state === 'recording'
-        if (!recording) void audio.start(store.get().audio)
+        if (!recording) await audio.start(store.get().audio)
         supervisor.record(!recording)
       },
       saveReplay: () => supervisor.saveReplay(),
@@ -92,8 +93,8 @@ if (!singleInstance) {
 
     const tray = new TrayController(store, {
       showWindow,
-      toggleReplay: (enabled) => actions.toggleReplay(enabled),
-      toggleRecording: () => actions.toggleRecording(),
+      toggleReplay: (enabled) => void actions.toggleReplay(enabled),
+      toggleRecording: () => void actions.toggleRecording(),
       saveReplay: () => actions.saveReplay(),
       quit: () => {
         beginQuit()
@@ -122,10 +123,10 @@ if (!singleInstance) {
           actions.saveReplay()
           break
         case 'toggleRecord':
-          actions.toggleRecording()
+          void actions.toggleRecording()
           break
         case 'toggleReplayBuffer':
-          actions.toggleReplay(supervisor.getState().state === 'idle')
+          void actions.toggleReplay(supervisor.getState().state === 'idle')
           break
         case 'toggleMic':
           actions.toggleMic()
@@ -154,10 +155,7 @@ if (!singleInstance) {
     })
     hotkeys.start(store.get().hotkeys)
 
-    // The buffer setting is restored rather than cleared: if it was on when the
-    // app last closed, arm it again. That is what makes "start with Windows"
-    // plus an armed buffer actually mean the buffer is running after a reboot.
-    if (store.get().replay.enabled) actions.toggleReplay(true)
+    if (store.get().replay.enabled) void actions.toggleReplay(true)
 
     registerIpc(store, audio, supervisor, {
       onSettingsChanged: () => {
@@ -174,11 +172,10 @@ if (!singleInstance) {
       closeHud: () => hud.hide()
     })
 
-    // Only now that the IPC handlers exist: the page requests settings as soon
-    // as it loads, and building it earlier left it with a rejected promise and
-    // nothing to render. Built up front so the first keypress does not show an
-    // unpainted window.
     hud.create(store.get().app.theme)
+
+    void pruneThumbnails()
+    void discardLegacyUserData()
 
     app.on('will-quit', () => {
       hotkeys.stop()

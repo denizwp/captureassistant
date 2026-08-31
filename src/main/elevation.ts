@@ -5,12 +5,6 @@ const run = promisify(execFile)
 
 let warned = false
 
-/**
- * A low-level keyboard hook installed by a medium-integrity process usually
- * still sees keys headed for an elevated window, but not always — and when it
- * does not, the hotkeys simply stop working with no error anywhere. Detecting
- * the condition lets us say so instead of leaving the user guessing.
- */
 export async function isElevated(): Promise<boolean> {
   try {
     const { stdout } = await run(
@@ -30,10 +24,6 @@ export async function isElevated(): Promise<boolean> {
   }
 }
 
-/**
- * Names the foreground process when it runs at a higher integrity level than we
- * do. Returns null when everything is fine, so the caller can stay quiet.
- */
 export async function elevatedForegroundApp(): Promise<string | null> {
   const script = `
 $sig = @'
@@ -66,10 +56,6 @@ try { $null = $p.Path; '' } catch { $p.ProcessName }
   }
 }
 
-/**
- * Checks once per session, only while something is actually being recorded —
- * the warning is worthless before the user has tried to use a hotkey.
- */
 export async function warnIfHotkeysBlocked(
   notify: (message: string) => void
 ): Promise<void> {

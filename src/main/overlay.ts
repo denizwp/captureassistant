@@ -42,7 +42,6 @@ export interface OverlayPayload {
  * paints a solid black rectangle into every clip and every screenshot. The
  * badge showing up in the footage is the lesser problem.
  */
-
 export class Overlay {
   private window: BrowserWindow | null = null
   private hideTimer: NodeJS.Timeout | null = null
