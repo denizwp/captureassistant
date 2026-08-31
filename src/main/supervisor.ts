@@ -152,10 +152,6 @@ export class SupervisorHost extends EventEmitter {
     })
   }
 
-  setAudioLatency(seconds: number): void {
-    this.send({ type: 'audio-latency', seconds })
-  }
-
   arm(enabled: boolean): void {
     trace(`arm(${enabled}) process=${this.process ? 'alive' : 'null'}`)
     this.send({ type: 'arm', enabled })

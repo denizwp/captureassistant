@@ -28,7 +28,6 @@ type Incoming =
       outDir?: string
     }
   | { type: 'arm'; enabled: boolean }
-  | { type: 'audio-latency'; seconds: number }
   | { type: 'record'; start: boolean }
   | { type: 'save-replay' }
   | { type: 'shutdown' }
@@ -41,7 +40,6 @@ let ringDir = ''
 let outDir = ''
 let audioPipe = ''
 let audioDisabled = false
-let audioLatencySec = 0
 let bufferArmed = false
 let outputIdx = 0
 let adapterIdx = 0
@@ -127,9 +125,6 @@ async function startEncoder(): Promise<void> {
   startedAt = Date.now()
   ring.markEncoderStart()
   log(`encoder started (${encoder.id})`, 'success')
-  if (!audioDisabled) {
-    log(`audio advanced by ${(audioLatencySec * 1000).toFixed(0)}ms to match the picture`)
-  }
 
   let stderr = ''
   proc.stderr?.on('data', (chunk: Buffer) => {
@@ -565,10 +560,6 @@ async function handle(message: Incoming): Promise<void> {
       await publish()
       break
     }
-
-    case 'audio-latency':
-      audioLatencySec = message.seconds
-      break
 
     case 'arm':
       await setArmed(message.enabled)

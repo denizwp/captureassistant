@@ -38,20 +38,6 @@ if (!singleInstance) {
       callback(permission === 'media')
     })
 
-    // Registered before the self-test branches: they exercise the real capture
-    // path and would otherwise run without the sync compensation.
-    let measuredLatency = 0
-    const pushAudioLatency = (measured: number): void => {
-      const shift = measured + store.get().audio.syncOffsetMs / 1000
-      audio.setSkip(shift)
-      supervisor.setAudioLatency(shift)
-    }
-    audio.on('status', (payload: { latencySec?: number }) => {
-      if (typeof payload.latencySec !== 'number') return
-      measuredLatency = payload.latencySec
-      pushAudioLatency(measuredLatency)
-    })
-
     if (process.argv.includes('--update-test')) {
       await runUpdateSelfTest()
       app.quit()
@@ -128,7 +114,6 @@ if (!singleInstance) {
     const syncAudio = async (): Promise<void> => {
       const config = store.get().audio
       audio.setMic(config.micEnabled, config.micDeviceId, config.micGain)
-      pushAudioLatency(measuredLatency)
       audio.setGains(
         config.systemEnabled ? config.systemGain : 0,
         config.micEnabled ? config.micGain : 0
