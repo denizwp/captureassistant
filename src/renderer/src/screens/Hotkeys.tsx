@@ -37,6 +37,19 @@ function numpadName(code: string): string | null {
   return digit ? `num${digit[1]}` : null
 }
 
+const ARROWS: Record<string, string> = {
+  ArrowUp: 'Up',
+  ArrowDown: 'Down',
+  ArrowLeft: 'Left',
+  ArrowRight: 'Right'
+}
+
+function mainBlockName(key: string): string {
+  if (key === ' ') return 'Space'
+  if (ARROWS[key]) return ARROWS[key]
+  return key.length === 1 ? key.toUpperCase() : key
+}
+
 function toAccelerator(event: KeyboardEvent): string | null {
   if (MODIFIER_KEYS.has(event.key)) return null
 
@@ -46,22 +59,8 @@ function toAccelerator(event: KeyboardEvent): string | null {
   if (event.shiftKey) parts.push('Shift')
   if (event.metaKey) parts.push('Super')
 
-  const key = event.key
   const numpad = numpadName(event.code)
-  const named = numpad ??
-    key.length === 1
-      ? key.toUpperCase()
-      : key === ' '
-        ? 'Space'
-        : key === 'ArrowUp'
-          ? 'Up'
-          : key === 'ArrowDown'
-            ? 'Down'
-            : key === 'ArrowLeft'
-              ? 'Left'
-              : key === 'ArrowRight'
-                ? 'Right'
-                : key
+  const named = numpad ?? mainBlockName(event.key)
 
   parts.push(named)
 
