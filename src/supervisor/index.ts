@@ -126,6 +126,7 @@ async function startEncoder(): Promise<void> {
   const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   child = proc
   startedAt = Date.now()
+  ring.markEncoderStart()
   log(`encoder started (${encoder.id})`, 'success')
   if (!audioDisabled) {
     log(`audio advanced by ${(audioLatencySec * 1000).toFixed(0)}ms to match the picture`)

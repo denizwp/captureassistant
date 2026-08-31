@@ -80,19 +80,17 @@ export class Ring {
    * pressed needs this instead.
    */
   /*
-   * Noticing a segment always happens some time after it closed, so the wall
-   * clock at that moment can only ever be late. Keeping the earliest estimate
-   * we have seen converges on the real start of the timeline within a couple of
-   * segments, which is what anything lining up with a keypress needs.
+   * The ring advances one second per second while the encoder runs, so anchoring
+   * once at start is enough and cannot drift. Deriving it from observations
+   * instead let a single early poll skew the estimate permanently.
    */
-  private anchor(end: number): void {
-    const candidate = Date.now() - end * 1000
-    if (this.timeBase === 0 || candidate < this.timeBase) this.timeBase = candidate
+  markEncoderStart(): void {
+    this.timeBase = Date.now() - this.newestEnd * 1000
   }
 
   get liveEnd(): number {
     if (this.timeBase === 0) return this.newestEnd
-    return Math.max(this.newestEnd, (Date.now() - this.timeBase) / 1000)
+    return (Date.now() - this.timeBase) / 1000
   }
 
   beginRun(params: Omit<Run, 'id' | 'firstSegment' | 'lastSegment'>): void {
@@ -135,7 +133,6 @@ export class Ring {
         if (segment) {
           this.segments.push(segment)
           added.push(segment)
-          this.anchor(segment.end)
         }
       }
       return added
@@ -229,7 +226,7 @@ export class Ring {
       .then((s) => s.bavail * s.bsize)
       .catch(() => 0)
 
-    const inProgress = this.liveEnd - this.newestEnd
+    const inProgress = Math.max(0, Math.min(SEGMENT_SEC, this.liveEnd - this.newestEnd))
 
     return {
       segmentCount: this.segments.length,
