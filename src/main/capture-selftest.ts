@@ -104,6 +104,18 @@ export async function runCaptureSelfTest(
     return
   }
 
+  // The janitor sizes the ring from the supervisor's own copy of the settings.
+  // If that copy says the buffer is off it prunes to the idle window instead,
+  // and the ring silently stops growing around 22s no matter what is configured.
+  await wait(22_000)
+  const buffered = (last as SupervisorState | null)?.ring?.bufferedSec ?? 0
+  log(`buffered after 36s armed: ${buffered.toFixed(1)}s`)
+  if (buffered < 25) {
+    log(`  FAILED: ring is capped at ${buffered.toFixed(1)}s, janitor is using the idle window`)
+  } else {
+    log('  OK: ring keeps growing past the idle window')
+  }
+
   log('saving replay')
   supervisor.saveReplay()
   await wait(12_000)
@@ -135,6 +147,33 @@ export async function runCaptureSelfTest(
 
   supervisor.arm(false)
   await wait(1500)
+
+  // Recording with the buffer off starts the encoder from nothing, which is a
+  // different path from recording out of a ring that is already turning.
+  log('manual recording with the buffer off')
+  supervisor.record(true)
+  // The encoder is cold here and only reports 'recording' once it is actually
+  // rolling, so time the hold from that rather than from the request.
+  const rollingBy = Date.now() + 8000
+  while ((last as SupervisorState | null)?.state !== 'recording' && Date.now() < rollingBy) {
+    await wait(100)
+  }
+  const coldStart = Date.now()
+  await wait(RECORD_SEC * 1000)
+  supervisor.record(false)
+  const coldHeld = (Date.now() - coldStart) / 1000
+  await wait(12_000)
+
+  const cold = await newestClip(outDir, 'Kayıt')
+  const coldLength = cold ? await durationOf(cold) : null
+  if (coldLength === null) {
+    log('  FAILED: no clip from a cold manual recording')
+  } else {
+    const drift = coldLength - coldHeld
+    log(`  held ${coldHeld.toFixed(2)}s, clip ${coldLength.toFixed(2)}s, drift ${drift.toFixed(2)}s`)
+    log(Math.abs(drift) > 0.6 ? '  FAILED: cold recording is off' : '  OK: cold recording lines up')
+    log(`  (encoder warm-up excluded from the hold)`)
+  }
 
   restore()
 
