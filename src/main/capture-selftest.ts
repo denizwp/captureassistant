@@ -74,20 +74,33 @@ export async function runCaptureSelfTest(
   supervisor.on('toast', (t: { kind: string; message: string }) => log(`  toast(${t.kind}): ${t.message}`))
 
   const original = store.get().replay
+  // Every exit path has to put this back, or the next run reads the test's own
+  // 60s as the user's setting and quietly keeps it.
+  const restore = (): void => {
+    store.update({ replay: { durationSec: original.durationSec, enabled: original.enabled } })
+    log(`restored replay to ${original.durationSec}s, enabled=${original.enabled}`)
+  }
   const settings = store.update({ replay: { durationSec: 60, enabled: true } })
   const outDir = settings.output.dir ?? join(app.getPath('videos'), 'Capture Assistant')
   log(`output: ${outDir}`)
 
   supervisor.start(settings)
   const starveAudio = process.argv.includes('--starve-audio')
-  if (starveAudio) log('DELIBERATELY not starting audio, expecting a silent fallback')
-  else await audio.start(settings.audio)
+  if (starveAudio) {
+    // The pipe has to exist or ffmpeg just fails to open it. The failure worth
+    // reproducing is the one where it connects and then waits forever.
+    await audio.listen()
+    log('DELIBERATELY serving an empty audio pipe, expecting a silent fallback')
+  } else {
+    await audio.start(settings.audio)
+  }
   log('arming')
   supervisor.arm(true)
 
   await wait(starveAudio ? 26_000 : 14_000)
   if (!last || (last as SupervisorState).state !== 'armed') {
     log(`FAILED: never reached armed (${(last as SupervisorState | null)?.state ?? 'no state'})`)
+    restore()
     return
   }
 
@@ -123,8 +136,7 @@ export async function runCaptureSelfTest(
   supervisor.arm(false)
   await wait(1500)
 
-  store.update({ replay: { durationSec: original.durationSec, enabled: false } })
-  log(`restored replay duration to ${original.durationSec}s`)
+  restore()
 
   const files = await readdir(outDir).catch(() => [])
   const clips = files.filter((f) => f.endsWith('.mp4'))
