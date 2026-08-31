@@ -15,6 +15,7 @@ interface StatusPayload {
   running: boolean
   error?: string
   devices?: MicDevice[]
+  latencySec?: number
 }
 
 export class AudioEngine extends EventEmitter {
@@ -43,6 +44,8 @@ export class AudioEngine extends EventEmitter {
    * means drop the oldest — a queue left to grow becomes ever-increasing lag
    * against the video.
    */
+  private static readonly MAX_PENDING_BLOCKS = 5
+
   private static readonly MAX_QUEUE_BYTES = 48_000 * 2 * 4 * 0.2
 
   useAppAudio(active: boolean): void {
@@ -127,6 +130,24 @@ export class AudioEngine extends EventEmitter {
   async start(settings: AudioSettings): Promise<void> {
     await this.listen()
     await this.ensureWindow()
+
+    // Wait for the page to say it is running: that is when the pipe starts
+    // getting samples and when the measured latency is known, both of which the
+    // encoder needs before it spawns.
+    const running = new Promise<void>((resolve) => {
+      const done = (payload: StatusPayload): void => {
+        if (!payload.running && !payload.error) return
+        this.off('status', done)
+        clearTimeout(timer)
+        resolve()
+      }
+      const timer = setTimeout(() => {
+        this.off('status', done)
+        resolve()
+      }, 4000)
+      this.on('status', done)
+    })
+
     this.send({
       type: 'start',
       config: {
@@ -137,6 +158,8 @@ export class AudioEngine extends EventEmitter {
         micGain: settings.micGain
       }
     })
+
+    await running
   }
 
   stop(): void {
@@ -204,7 +227,13 @@ export class AudioEngine extends EventEmitter {
       const chunk = this.applyAppAudio(Buffer.from(buffer))
       if (this.client) {
         this.client.write(chunk)
-      } else if (this.pending.length < 250) {
+      } else if (this.pending.length < AudioEngine.MAX_PENDING_BLOCKS) {
+        this.pending.push(chunk)
+      } else {
+        // Only enough to cover ffmpeg opening the pipe. Holding more means
+        // replaying stale sound the moment it connects, which lands seconds of
+        // old audio at the head of the recording and pushes it ahead of video.
+        this.pending.shift()
         this.pending.push(chunk)
       }
     })
