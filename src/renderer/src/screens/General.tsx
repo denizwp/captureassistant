@@ -1,5 +1,6 @@
 import type { DeepPartial } from '@shared/ipc'
 import type { IndicatorCorner, Settings } from '@shared/settings'
+import { api } from '../api'
 import { Section, Segmented, Setting, Slider, Switch } from '../components/controls'
 import art from '../../assets/character-panel.png'
 
@@ -128,7 +129,15 @@ export function GeneralScreen({
                   <span className="pathrow__value" title={replay.bufferDir ?? ''}>
                     {replay.bufferDir ?? 'Uygulama verisi\\ring'}
                   </span>
-                  <button type="button" className="btn btn--secondary">
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => {
+                      void api.chooseDirectory(replay.bufferDir).then((dir) => {
+                        if (dir) patch({ replay: { bufferDir: dir } })
+                      })
+                    }}
+                  >
                     Değiştir
                   </button>
                 </div>

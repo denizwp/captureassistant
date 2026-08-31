@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { readdir, rm, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import type { DeepPartial } from '@shared/ipc'
@@ -71,6 +71,18 @@ export function registerIpc(
   ipcMain.handle('audio:devices', () => {
     audio.refreshDevices()
     return audio.getDevices()
+  })
+
+  ipcMain.handle('dialog:choose-directory', async (e, current: string | null) => {
+    const owner = BrowserWindow.fromWebContents(e.sender)
+    const options: Electron.OpenDialogOptions = {
+      properties: ['openDirectory', 'createDirectory'],
+      ...(current ? { defaultPath: current } : {})
+    }
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options)
+    return result.canceled ? null : (result.filePaths[0] ?? null)
   })
 
   ipcMain.handle('clips:list', () => listClips(outputDir()))

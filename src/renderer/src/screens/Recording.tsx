@@ -240,7 +240,15 @@ export function RecordingScreen({
                   <span className="pathrow__value" title={settings.output.dir ?? ''}>
                     {settings.output.dir ?? 'Videolar\\Capture Assistant'}
                   </span>
-                  <button type="button" className="btn btn--secondary">
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => {
+                      void api.chooseDirectory(settings.output.dir).then((dir) => {
+                        if (dir) patch({ output: { dir } })
+                      })
+                    }}
+                  >
                     Değiştir
                   </button>
                 </div>

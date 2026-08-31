@@ -9,6 +9,8 @@ const api = {
   getState: () => ipcRenderer.invoke('state:get'),
   listMonitors: () => ipcRenderer.invoke('monitors:list'),
 
+  chooseDirectory: (current: string | null) =>
+    ipcRenderer.invoke('dialog:choose-directory', current),
   listClips: () => ipcRenderer.invoke('clips:list'),
   clipThumbnail: (path: string, mtimeMs: number) =>
     ipcRenderer.invoke('clips:thumbnail', path, mtimeMs),

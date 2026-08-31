@@ -14,6 +14,7 @@ interface CaptureApi {
   setSettings(patch: DeepPartial<Settings>): Promise<Settings>
   getState(): Promise<SupervisorState>
   listMonitors(): Promise<MonitorInfo[]>
+  chooseDirectory(current: string | null): Promise<string | null>
   listClips(): Promise<Clip[]>
   clipThumbnail(path: string, mtimeMs: number): Promise<string | null>
   revealClip(path: string): Promise<void>
