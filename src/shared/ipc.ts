@@ -28,6 +28,7 @@ export interface RendererEvents {
   settings: Settings
   clips: Clip[]
   toast: { kind: 'info' | 'success' | 'warning' | 'error'; message: string }
+  levels: { system: number; mic: number }
 }
 
 export type DeepPartial<T> = {

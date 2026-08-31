@@ -511,3 +511,17 @@
     color: var(--brand);
     text-decoration: underline;
 }
+
+.meter {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-recessed);
+  box-shadow: var(--ring-hairline);
+  overflow: hidden;
+}
+
+.meter__fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 80ms linear;
+}
