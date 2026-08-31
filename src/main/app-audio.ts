@@ -3,7 +3,6 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import type { SystemAudioMode } from '@shared/settings'
 
 const run = promisify(execFile)
 
@@ -27,79 +26,82 @@ export function helperAvailable(): boolean {
 export async function listAudioApps(): Promise<AudioApp[]> {
   try {
     const { stdout } = await run(helperPath(), ['--list'], { timeout: 5000 })
-    const parsed = JSON.parse(stdout) as AudioApp[]
-    const seen = new Set<string>()
-    return parsed.filter((item) => {
-      const key = item.exe.toLowerCase()
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+    return JSON.parse(stdout) as AudioApp[]
   } catch {
     return []
   }
 }
 
-async function pidFor(exe: string): Promise<number | null> {
-  const apps = await listAudioApps()
-  const match = apps.find((item) => item.exe.toLowerCase() === exe.toLowerCase())
-  return match?.pid ?? null
+export async function listAudioAppNames(): Promise<string[]> {
+  const seen = new Set<string>()
+  for (const item of await listAudioApps()) seen.add(item.exe)
+  return [...seen].sort((a, b) => a.localeCompare(b, 'tr'))
 }
 
+/*
+ * Process loopback aims at one process tree per call, so covering "everything
+ * except these" means running a helper for each app we do want and adding the
+ * streams up. With nothing muted there is nothing to work around, and the
+ * ordinary loopback stays in charge — it also picks up apps that never register
+ * a session, which this path cannot see.
+ */
 export class AppAudioCapture {
-  private child: ChildProcess | null = null
+  private readonly children = new Map<number, ChildProcess>()
+  private muted: string[] = []
 
-  get running(): boolean {
-    return this.child !== null
+  get active(): boolean {
+    return this.muted.length > 0
   }
 
-  async start(
-    mode: SystemAudioMode,
-    exe: string | null,
-    onData: (chunk: Buffer) => void,
-    onError: (message: string) => void
+  async sync(
+    muted: string[],
+    onData: (pid: number, chunk: Buffer) => void,
+    onError: (message: string) => void,
+    onGone: (pid: number) => void = () => undefined
   ): Promise<boolean> {
-    this.stop()
-    if (mode === 'all' || !exe) return false
-    if (!helperAvailable()) {
-      onError('Uygulama bazlı ses yakalayıcı bulunamadı.')
+    this.muted = muted
+
+    if (muted.length === 0 || !helperAvailable()) {
+      if (muted.length > 0) onError('Uygulama bazlı ses yakalayıcı bulunamadı.')
+      this.stop()
       return false
     }
 
-    const pid = await pidFor(exe)
-    if (pid === null) {
-      onError(`${exe} şu anda ses çalmıyor, tüm sistem sesi kaydedilecek.`)
-      return false
+    const blocked = new Set(muted.map((name) => name.toLowerCase()))
+    const wanted = new Map<number, string>()
+    for (const item of await listAudioApps()) {
+      if (!blocked.has(item.exe.toLowerCase())) wanted.set(item.pid, item.exe)
     }
 
-    const flag = mode === 'only' ? '--include' : '--exclude'
-    const child = spawn(helperPath(), [flag, String(pid)], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true
-    })
-    this.child = child
-
-    child.stdout?.on('data', onData)
-
-    let stderr = ''
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString()
-    })
-
-    child.on('close', (code) => {
-      if (this.child !== child) return
-      this.child = null
-      if (code !== 0 && code !== null) {
-        onError(stderr.trim().split('\n').at(-1) ?? `ses yakalayıcı ${code} ile çıktı`)
+    for (const [pid, child] of this.children) {
+      if (!wanted.has(pid)) {
+        this.children.delete(pid)
+        child.kill()
+        onGone(pid)
       }
-    })
+    }
+
+    for (const [pid] of wanted) {
+      if (this.children.has(pid)) continue
+      const child = spawn(helperPath(), ['--include', String(pid)], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+        windowsHide: true
+      })
+      this.children.set(pid, child)
+      child.stdout?.on('data', (chunk: Buffer) => onData(pid, chunk))
+      child.on('close', () => {
+        if (this.children.get(pid) !== child) return
+        this.children.delete(pid)
+        onGone(pid)
+      })
+    }
 
     return true
   }
 
   stop(): void {
-    const child = this.child
-    this.child = null
-    child?.kill()
+    for (const child of this.children.values()) child.kill()
+    this.children.clear()
+    this.muted = []
   }
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { DeepPartial } from '@shared/ipc'
-import type { Settings, SystemAudioMode } from '@shared/settings'
-import { Section, Segmented, Setting, Slider, Switch } from '../components/controls'
+import type { Settings } from '@shared/settings'
+import { Section, Setting, Slider, Switch } from '../components/controls'
 import { Select } from '../components/Select'
 import { api } from '../api'
 import { characterArt } from '../art'
@@ -28,14 +28,13 @@ export function AudioScreen({
   const { audio } = settings
   const [devices, setDevices] = useState<{ id: string; label: string }[]>([])
   const [levels, setLevels] = useState({ system: FLOOR_DB, mic: FLOOR_DB })
-  const [apps, setApps] = useState<{ pid: number; exe: string }[]>([])
+  const [apps, setApps] = useState<string[]>([])
 
   useEffect(() => {
-    if (audio.systemMode === 'all') return
     void api.listAudioApps().then(setApps)
     const timer = setInterval(() => void api.listAudioApps().then(setApps), 4000)
     return () => clearInterval(timer)
-  }, [audio.systemMode])
+  }, [])
 
   useEffect(() => {
     void api.listMicDevices().then(setDevices)
@@ -104,43 +103,56 @@ export function AudioScreen({
             />
             <Setting
               stacked
-              label="Hangi uygulamalar"
-              hint="Tek bir uygulamanın sesini alabilir veya sadece onu dışarıda bırakabilirsin. Windows 10 sürüm 20348 ve üzeri gerekir."
+              label="Hangi uygulamaların sesi kaydedilsin"
+              hint={
+                apps.length === 0
+                  ? 'Şu anda ses çalan uygulama yok. Bir şey çalmaya başlayınca burada görünür.'
+                  : 'İşareti kaldırdığın uygulamalar kayda girmez. Hiçbirini kapatmazsan tüm sistem sesi kaydedilir.'
+              }
               control={
-                <Segmented<SystemAudioMode>
-                  value={audio.systemMode}
-                  onChange={(systemMode) => patch({ audio: { systemMode } })}
-                  options={[
-                    { value: 'all', label: 'Hepsi' },
-                    { value: 'except', label: 'Biri hariç' },
-                    { value: 'only', label: 'Sadece biri' }
-                  ]}
-                />
+                <div className="applist">
+                  {apps.map((exe) => {
+                    const muted = audio.mutedApps.includes(exe)
+                    return (
+                      <label key={exe} className="applist__row">
+                        <input
+                          type="checkbox"
+                          checked={!muted}
+                          onChange={() =>
+                            patch({
+                              audio: {
+                                mutedApps: muted
+                                  ? audio.mutedApps.filter((name) => name !== exe)
+                                  : [...audio.mutedApps, exe]
+                              }
+                            })
+                          }
+                        />
+                        <span>{exe.replace(/\.exe$/i, '')}</span>
+                      </label>
+                    )
+                  })}
+                  {audio.mutedApps
+                    .filter((exe) => !apps.includes(exe))
+                    .map((exe) => (
+                      <label key={exe} className="applist__row applist__row--gone">
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          onChange={() =>
+                            patch({
+                              audio: {
+                                mutedApps: audio.mutedApps.filter((name) => name !== exe)
+                              }
+                            })
+                          }
+                        />
+                        <span>{exe.replace(/\.exe$/i, '')} (kapalı)</span>
+                      </label>
+                    ))}
+                </div>
               }
             />
-            {audio.systemMode !== 'all' && (
-              <Setting
-                label="Uygulama"
-                hint={
-                  apps.length === 0
-                    ? 'Ses çalan bir uygulama görünmüyor. Uygulamayı açıp ses çaldır.'
-                    : 'Yalnızca şu anda ses çalan uygulamalar listelenir.'
-                }
-                control={
-                  <div style={{ width: 260 }}>
-                    <Select
-                      label="Ses uygulaması"
-                      value={audio.systemApp ?? ''}
-                      onChange={(systemApp) => patch({ audio: { systemApp } })}
-                      options={[
-                        { value: '', label: 'Seçilmedi' },
-                        ...apps.map((item) => ({ value: item.exe, label: item.exe }))
-                      ]}
-                    />
-                  </div>
-                }
-              />
-            )}
           </Section>
 
           <Section title="Mikrofon">

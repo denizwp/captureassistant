@@ -17,7 +17,7 @@ interface CaptureApi {
   chooseDirectory(current: string | null): Promise<string | null>
   listMicDevices(): Promise<{ id: string; label: string }[]>
   setMetering(enabled: boolean): Promise<void>
-  listAudioApps(): Promise<{ pid: number; exe: string }[]>
+  listAudioApps(): Promise<string[]>
   listClips(): Promise<Clip[]>
   clipMeta(
     path: string,

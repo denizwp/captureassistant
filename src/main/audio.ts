@@ -24,7 +24,7 @@ export class AudioEngine extends EventEmitter {
   private ready = false
   private pending: Buffer[] = []
   private devices: MicDevice[] = []
-  private appAudio: Buffer = Buffer.alloc(0)
+  private appAudio = new Map<number, Buffer>()
   private appAudioActive = false
 
   constructor(private readonly preload = join(__dirname, '../preload/audio.js')) {
@@ -37,26 +37,28 @@ export class AudioEngine extends EventEmitter {
   }
 
   /*
-   * The native helper and the capture page are clocked independently, so instead
-   * of trying to keep them in lockstep the helper's samples are queued and the
-   * page's blocks decide how many get consumed. Short means pad with silence,
-   * long means throw the oldest away — a queue left to grow would turn into
-   * ever-increasing lag against the video.
+   * Helpers and the capture page are clocked independently, so rather than try
+   * to keep them in lockstep each helper's samples are queued and the page's
+   * blocks decide how many get consumed. Short means pad with silence, long
+   * means drop the oldest — a queue left to grow becomes ever-increasing lag
+   * against the video.
    */
   private static readonly MAX_QUEUE_BYTES = 48_000 * 2 * 4 * 0.2
 
   useAppAudio(active: boolean): void {
     this.appAudioActive = active
-    this.appAudio = Buffer.alloc(0)
+    this.appAudio.clear()
   }
 
-  pushAppAudio(chunk: Buffer): void {
+  pushAppAudio(source: number, chunk: Buffer): void {
     if (!this.appAudioActive) return
-    this.appAudio = Buffer.concat([this.appAudio, chunk])
+    const queued = Buffer.concat([this.appAudio.get(source) ?? Buffer.alloc(0), chunk])
     const max = AudioEngine.MAX_QUEUE_BYTES
-    if (this.appAudio.length > max) {
-      this.appAudio = this.appAudio.subarray(this.appAudio.length - max)
-    }
+    this.appAudio.set(source, queued.length > max ? queued.subarray(queued.length - max) : queued)
+  }
+
+  dropAppAudio(source: number): void {
+    this.appAudio.delete(source)
   }
 
   private applyAppAudio(block: Buffer): Buffer {
@@ -64,19 +66,25 @@ export class AudioEngine extends EventEmitter {
 
     const frames = block.length / 16
     const wanted = frames * 8
-    const take = Math.min(wanted, this.appAudio.length - (this.appAudio.length % 8))
-    const source = this.appAudio.subarray(0, take)
-    this.appAudio = this.appAudio.subarray(take)
+
+    const takes: Buffer[] = []
+    for (const [source, queued] of this.appAudio) {
+      const usable = Math.min(wanted, queued.length - (queued.length % 8))
+      takes.push(queued.subarray(0, usable))
+      this.appAudio.set(source, queued.subarray(usable))
+    }
 
     for (let i = 0; i < frames; i++) {
-      const at = i * 8
-      if (at + 8 <= source.length) {
-        block.writeFloatLE(source.readFloatLE(at), i * 16)
-        block.writeFloatLE(source.readFloatLE(at + 4), i * 16 + 4)
-      } else {
-        block.writeFloatLE(0, i * 16)
-        block.writeFloatLE(0, i * 16 + 4)
+      let left = 0
+      let right = 0
+      for (const take of takes) {
+        const at = i * 8
+        if (at + 8 > take.length) continue
+        left += take.readFloatLE(at)
+        right += take.readFloatLE(at + 4)
       }
+      block.writeFloatLE(Math.max(-1, Math.min(1, left)), i * 16)
+      block.writeFloatLE(Math.max(-1, Math.min(1, right)), i * 16 + 4)
     }
     return block
   }

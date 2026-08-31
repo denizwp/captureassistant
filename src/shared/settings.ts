@@ -22,19 +22,15 @@ export interface ReplaySettings {
   bufferDir: string | null
 }
 
-export type SystemAudioMode = 'all' | 'only' | 'except'
-
 export interface AudioSettings {
   systemEnabled: boolean
   systemGain: number
 
   /*
-   * 'all' takes the whole output mix through Chromium. The other two need the
-   * native helper, which can only aim at one process tree, so a single exe name
-   * is all this can hold. Names rather than pids — pids change every launch.
+   * Executable names, not pids — pids change every launch. Empty means record
+   * everything, which is also the cheapest path.
    */
-  systemMode: SystemAudioMode
-  systemApp: string | null
+  mutedApps: string[]
   micEnabled: boolean
 
   micDeviceId: string | null
@@ -98,8 +94,7 @@ export const DEFAULT_SETTINGS: Settings = {
   audio: {
     systemEnabled: true,
     systemGain: 1,
-    systemMode: 'all',
-    systemApp: null,
+    mutedApps: [],
     micEnabled: false,
     micDeviceId: null,
     micGain: 1
