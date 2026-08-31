@@ -6,6 +6,7 @@ import type { CaptureState, SupervisorState } from '@shared/state'
 import { assemble } from './assembler'
 import { probeCapture, probeEncoder } from './encoders'
 import { buildRingArgs, PRESET_MAXRATE_KBPS, SEGMENT_SEC, type EncoderChoice } from './pipeline'
+import { CaptureHealth } from './health'
 import { Ring, sweepOrphans } from './ring'
 
 interface InitMessage {
@@ -51,6 +52,8 @@ let restarting = false
 let stopping = false
 let consecutiveFailures = 0
 let startedAt = 0
+let health: CaptureHealth | null = null
+let healthLoggedAt = 0
 
 const HEALTHY_RUN_MS = 5000
 const MAX_FAST_FAILURES = 4
@@ -125,6 +128,25 @@ async function startEncoder(): Promise<void> {
   startedAt = Date.now()
   ring.markEncoderStart()
   log(`encoder started (${encoder.id})`, 'success')
+
+  health = new CaptureHealth()
+  healthLoggedAt = 0
+  const monitor = health
+  proc.stdout?.on('data', (chunk: Buffer) => {
+    if (health !== monitor) return
+    monitor.feed(chunk.toString())
+    const fps = monitor.effectiveFps
+    if (fps === null) return
+    const target = settings?.capture.fps ?? 60
+
+    // A timeline in the log is the only way to tell afterwards whether a clip
+    // came out choppy because the screen was never sampled.
+    const now = Date.now()
+    if (now - healthLoggedAt > 30_000) {
+      healthLoggedAt = now
+      log(`capture ${fps.toFixed(1)}/${target} fps`)
+    }
+  })
 
   let stderr = ''
   proc.stderr?.on('data', (chunk: Buffer) => {
