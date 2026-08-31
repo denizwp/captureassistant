@@ -1,3 +1,4 @@
+import { listAudioApps } from './app-audio'
 import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { readdir, rm, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
@@ -30,6 +31,11 @@ export function registerIpc(
   supervisor.on('state', (state) => broadcast('state', state))
   supervisor.on('toast', (toast) => broadcast('toast', toast))
   audio.on('levels', (levels) => broadcast('levels', levels))
+  audio.on('status', (payload: { running: boolean; error?: string }) => {
+    if (payload.error) {
+      broadcast('toast', { kind: 'warning', message: `Ses yakalanamadı: ${payload.error}` })
+    }
+  })
   supervisor.on('clip', () => void listClips(outputDir()).then((c) => broadcast('clips', c)))
 
   ipcMain.handle('settings:get', () => store.get())
@@ -74,6 +80,8 @@ export function registerIpc(
   ipcMain.on('hud:close', () => hooks.closeHud?.())
 
   ipcMain.handle('audio:meter', (_e, enabled: boolean) => audio.setMetering(enabled))
+
+  ipcMain.handle('audio:apps', () => listAudioApps())
 
   ipcMain.handle('audio:devices', () => {
     audio.refreshDevices()

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { DeepPartial } from '@shared/ipc'
-import type { Settings } from '@shared/settings'
-import { Section, Setting, Slider, Switch } from '../components/controls'
+import type { Settings, SystemAudioMode } from '@shared/settings'
+import { Section, Segmented, Setting, Slider, Switch } from '../components/controls'
 import { Select } from '../components/Select'
 import { api } from '../api'
 import { characterArt } from '../art'
@@ -28,6 +28,14 @@ export function AudioScreen({
   const { audio } = settings
   const [devices, setDevices] = useState<{ id: string; label: string }[]>([])
   const [levels, setLevels] = useState({ system: FLOOR_DB, mic: FLOOR_DB })
+  const [apps, setApps] = useState<{ pid: number; exe: string }[]>([])
+
+  useEffect(() => {
+    if (audio.systemMode === 'all') return
+    void api.listAudioApps().then(setApps)
+    const timer = setInterval(() => void api.listAudioApps().then(setApps), 4000)
+    return () => clearInterval(timer)
+  }, [audio.systemMode])
 
   useEffect(() => {
     void api.listMicDevices().then(setDevices)
@@ -94,6 +102,45 @@ export function AudioScreen({
                 </div>
               }
             />
+            <Setting
+              stacked
+              label="Hangi uygulamalar"
+              hint="Tek bir uygulamanın sesini alabilir veya sadece onu dışarıda bırakabilirsin. Windows 10 sürüm 20348 ve üzeri gerekir."
+              control={
+                <Segmented<SystemAudioMode>
+                  value={audio.systemMode}
+                  onChange={(systemMode) => patch({ audio: { systemMode } })}
+                  options={[
+                    { value: 'all', label: 'Hepsi' },
+                    { value: 'except', label: 'Biri hariç' },
+                    { value: 'only', label: 'Sadece biri' }
+                  ]}
+                />
+              }
+            />
+            {audio.systemMode !== 'all' && (
+              <Setting
+                label="Uygulama"
+                hint={
+                  apps.length === 0
+                    ? 'Ses çalan bir uygulama görünmüyor. Uygulamayı açıp ses çaldır.'
+                    : 'Yalnızca şu anda ses çalan uygulamalar listelenir.'
+                }
+                control={
+                  <div style={{ width: 260 }}>
+                    <Select
+                      label="Ses uygulaması"
+                      value={audio.systemApp ?? ''}
+                      onChange={(systemApp) => patch({ audio: { systemApp } })}
+                      options={[
+                        { value: '', label: 'Seçilmedi' },
+                        ...apps.map((item) => ({ value: item.exe, label: item.exe }))
+                      ]}
+                    />
+                  </div>
+                }
+              />
+            )}
           </Section>
 
           <Section title="Mikrofon">
@@ -152,25 +199,6 @@ export function AudioScreen({
                 <div style={{ width: 220 }}>
                   <Meter db={levels.mic} active={audio.micEnabled} />
                 </div>
-              }
-            />
-          </Section>
-
-          <Section title="Kanallar">
-            <Setting
-              label="Sesleri ayrı kanallara yaz"
-              hint={
-                audio.micEnabled
-                  ? 'Karışık ses ilk kanalda kalır; sistem ve mikrofon ayrıca ikinci ve üçüncü kanala yazılır, böylece sonradan ayrı düzenlenebilir.'
-                  : 'Ayıracak ikinci bir kaynak yok — mikrofonu açtığında kullanılabilir.'
-              }
-              control={
-                <Switch
-                  label="Sesleri ayrı kanallara yaz"
-                  disabled={!audio.micEnabled}
-                  checked={audio.separateTracks && audio.micEnabled}
-                  onChange={(separateTracks) => patch({ audio: { separateTracks } })}
-                />
               }
             />
           </Section>

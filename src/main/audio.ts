@@ -24,6 +24,8 @@ export class AudioEngine extends EventEmitter {
   private ready = false
   private pending: Buffer[] = []
   private devices: MicDevice[] = []
+  private appAudio: Buffer = Buffer.alloc(0)
+  private appAudioActive = false
 
   constructor(private readonly preload = join(__dirname, '../preload/audio.js')) {
     super()
@@ -32,6 +34,51 @@ export class AudioEngine extends EventEmitter {
 
   getDevices(): MicDevice[] {
     return this.devices
+  }
+
+  /*
+   * The native helper and the capture page are clocked independently, so instead
+   * of trying to keep them in lockstep the helper's samples are queued and the
+   * page's blocks decide how many get consumed. Short means pad with silence,
+   * long means throw the oldest away — a queue left to grow would turn into
+   * ever-increasing lag against the video.
+   */
+  private static readonly MAX_QUEUE_BYTES = 48_000 * 2 * 4 * 0.2
+
+  useAppAudio(active: boolean): void {
+    this.appAudioActive = active
+    this.appAudio = Buffer.alloc(0)
+  }
+
+  pushAppAudio(chunk: Buffer): void {
+    if (!this.appAudioActive) return
+    this.appAudio = Buffer.concat([this.appAudio, chunk])
+    const max = AudioEngine.MAX_QUEUE_BYTES
+    if (this.appAudio.length > max) {
+      this.appAudio = this.appAudio.subarray(this.appAudio.length - max)
+    }
+  }
+
+  private applyAppAudio(block: Buffer): Buffer {
+    if (!this.appAudioActive) return block
+
+    const frames = block.length / 16
+    const wanted = frames * 8
+    const take = Math.min(wanted, this.appAudio.length - (this.appAudio.length % 8))
+    const source = this.appAudio.subarray(0, take)
+    this.appAudio = this.appAudio.subarray(take)
+
+    for (let i = 0; i < frames; i++) {
+      const at = i * 8
+      if (at + 8 <= source.length) {
+        block.writeFloatLE(source.readFloatLE(at), i * 16)
+        block.writeFloatLE(source.readFloatLE(at + 4), i * 16 + 4)
+      } else {
+        block.writeFloatLE(0, i * 16)
+        block.writeFloatLE(0, i * 16 + 4)
+      }
+    }
+    return block
   }
 
   async listen(): Promise<void> {
@@ -142,7 +189,7 @@ export class AudioEngine extends EventEmitter {
     })
 
     ipcMain.on('audio:pcm', (_e, buffer: ArrayBuffer) => {
-      const chunk = Buffer.from(buffer)
+      const chunk = this.applyAppAudio(Buffer.from(buffer))
       if (this.client) {
         this.client.write(chunk)
       } else if (this.pending.length < 250) {

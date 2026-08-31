@@ -13,6 +13,7 @@ const api = {
     ipcRenderer.invoke('dialog:choose-directory', current),
   listMicDevices: () => ipcRenderer.invoke('audio:devices'),
   setMetering: (enabled: boolean) => ipcRenderer.invoke('audio:meter', enabled),
+  listAudioApps: () => ipcRenderer.invoke('audio:apps'),
   listClips: () => ipcRenderer.invoke('clips:list'),
   clipMeta: (path: string, mtimeMs: number) => ipcRenderer.invoke('clips:meta', path, mtimeMs),
   revealClip: (path: string) => ipcRenderer.invoke('clips:reveal', path),
