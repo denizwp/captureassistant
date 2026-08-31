@@ -70,10 +70,12 @@ if (!singleInstance) {
     }
 
     const appAudio = new AppAudioCapture()
+    let appAudioKey = ''
 
     const startAudio = async (): Promise<void> => {
       const config = store.get().audio
       await audio.start(config)
+      appAudioKey = `${config.systemMode}:${config.systemApp ?? ''}`
       const active = await appAudio.start(
         config.systemMode,
         config.systemApp,
@@ -87,6 +89,33 @@ if (!singleInstance) {
       appAudio.stop()
       audio.useAppAudio(false)
       audio.stop()
+    }
+
+    /*
+     * Settings can change while the buffer is already running, and the capture
+     * page only reads them once at start. Push the ones that can be applied to a
+     * live graph so a toggle takes effect now rather than at the next arm.
+     */
+    const syncAudio = async (): Promise<void> => {
+      const config = store.get().audio
+      audio.setMic(config.micEnabled, config.micDeviceId, config.micGain)
+      audio.setGains(
+        config.systemEnabled ? config.systemGain : 0,
+        config.micEnabled ? config.micGain : 0
+      )
+
+      const key = `${config.systemMode}:${config.systemApp ?? ''}`
+      if (key === appAudioKey) return
+      appAudioKey = key
+
+      if (supervisor.getState().state === 'idle') return
+      const active = await appAudio.start(
+        config.systemMode,
+        config.systemApp,
+        (chunk) => audio.pushAppAudio(chunk),
+        (message) => broadcast('toast', { kind: 'warning', message })
+      )
+      audio.useAppAudio(active)
     }
 
     const actions = {
@@ -106,6 +135,7 @@ if (!singleInstance) {
         const next = store.update({
           audio: { micEnabled: !store.get().audio.micEnabled }
         })
+        audio.setMic(next.audio.micEnabled, next.audio.micDeviceId, next.audio.micGain)
         audio.setGains(
           next.audio.systemEnabled ? next.audio.systemGain : 0,
           next.audio.micEnabled ? next.audio.micGain : 0
@@ -193,6 +223,7 @@ if (!singleInstance) {
         hotkeys.bind(store.get().hotkeys)
         overlay.update(supervisor.getState(), store.get().app)
         hud.setTheme(store.get().app.theme)
+        void syncAudio()
       },
       toggleMic: () => actions.toggleMic(),
       openSettings: () => {

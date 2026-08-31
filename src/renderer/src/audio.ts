@@ -183,9 +183,19 @@ async function stop(): Promise<void> {
   }
 }
 
+let micDeviceId: string | null = null
+
 async function attachMic(deviceId: string | null, gain: number): Promise<void> {
   const ctx = context
-  if (!ctx || !merger || micStream) return
+  if (!ctx || !merger) return
+  // Swapping devices means tearing the old one down first, otherwise the
+  // early return below would silently keep recording the previous microphone.
+  if (micStream && deviceId !== micDeviceId) detachMic()
+  if (micStream) {
+    if (micGain) micGain.gain.value = gain
+    return
+  }
+  micDeviceId = deviceId
 
   micStream = await navigator.mediaDevices.getUserMedia({
     audio: {

@@ -135,6 +135,10 @@ export class AudioEngine extends EventEmitter {
     this.send({ type: 'stop' })
   }
 
+  setMic(enabled: boolean, deviceId: string | null, gain: number): void {
+    this.send({ type: 'mic', enabled, deviceId, gain })
+  }
+
   setGains(systemGain: number, micGain: number): void {
     this.send({ type: 'gains', config: { systemGain, micGain } })
   }
