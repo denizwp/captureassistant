@@ -1,0 +1,190 @@
+import { useEffect, useState } from 'react'
+import type { SupervisorState } from '@shared/state'
+import { INITIAL_STATE } from '@shared/state'
+import { api } from './api'
+import { useSettings } from './useSettings'
+import { formatBytes, formatClock } from './format'
+import { ClipsScreen } from './screens/Clips'
+import { RecordingScreen } from './screens/Recording'
+import { AudioScreen } from './screens/Audio'
+import { HotkeysScreen } from './screens/Hotkeys'
+import { GeneralScreen } from './screens/General'
+
+const SCREENS = [
+  { id: 'clips', label: 'Kayıtlar', icon: 'ph-film-strip' },
+  { id: 'recording', label: 'Kayıt', icon: 'ph-record' },
+  { id: 'audio', label: 'Ses', icon: 'ph-speaker-high' },
+  { id: 'hotkeys', label: 'Kısayollar', icon: 'ph-keyboard' },
+  { id: 'general', label: 'Genel', icon: 'ph-gear' }
+] as const
+
+type ScreenId = (typeof SCREENS)[number]['id']
+
+export function App() {
+  const { settings, patch } = useSettings()
+  const [screen, setScreen] = useState<ScreenId>('clips')
+  const [state, setState] = useState<SupervisorState>(INITIAL_STATE)
+
+  useEffect(() => {
+    void api.getState().then((s) => setState(s as SupervisorState))
+    return api.on('state', (payload) => setState(payload as SupervisorState))
+  }, [])
+
+  useEffect(() => {
+    if (settings) document.documentElement.dataset['mode'] = settings.app.theme
+  }, [settings])
+
+  // Nothing renders until settings arrive; it is one IPC round trip and
+  // flashing default values first would be worse than a blank frame.
+  if (!settings) return null
+
+  return (
+    <>
+      <header className="appbar">
+        <Brand />
+        <div className="appbar__meta">
+          <StateBadge state={state} />
+          <div className="wincontrols">
+            <button type="button" aria-label="Simge durumuna küçült" onClick={api.windowMinimize}>
+              <i className="ph ph-minus" />
+            </button>
+            <button type="button" className="is-close" aria-label="Kapat" onClick={api.windowClose}>
+              <i className="ph ph-x" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="shell">
+        <aside className="sidebar">
+          <div className="sidebar__scroll">
+            <div className="sidebar__group">
+              <nav className="nav">
+                {SCREENS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`nav__item${item.id === screen ? ' is-active' : ''}`}
+                    onClick={() => setScreen(item.id)}
+                  >
+                    <i className={`ph ${item.icon}`} />
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            <div className="sidebar__group">
+              <h2 className="sidebar__group-label">Durum</h2>
+              <div className="status-list">
+                <StatusRow
+                  label="Geçmiş kayıt"
+                  value={state.state === 'idle' ? 'Kapalı' : 'Açık'}
+                  tone={state.state === 'idle' ? 'neutral' : 'success'}
+                />
+                <StatusRow
+                  label="Encoder"
+                  value={state.encoder?.id ?? 'Belirlenmedi'}
+                  tone={state.encoder?.hardware ? 'success' : 'neutral'}
+                />
+                <StatusRow
+                  label="Tampon"
+                  value={
+                    state.ring ? formatClock(state.ring.bufferedSec) : '—'
+                  }
+                  tone="neutral"
+                />
+              </div>
+            </div>
+          </div>
+
+          <dl className="sidebar__footer">
+            <div className="meta-row">
+              <dt>Tampon boyutu</dt>
+              <dd className="mono">{state.ring ? formatBytes(state.ring.bytesOnDisk) : '—'}</dd>
+            </div>
+            <div className="meta-row">
+              <dt>Yazma hızı</dt>
+              <dd className="mono">
+                {state.ring ? `${formatBytes(state.ring.bytesPerSec * 3600)}/sa` : '—'}
+              </dd>
+            </div>
+          </dl>
+        </aside>
+
+        {screen === 'clips' && <ClipsScreen />}
+        {screen === 'recording' && <RecordingScreen settings={settings} patch={patch} />}
+        {screen === 'audio' && <AudioScreen settings={settings} patch={patch} />}
+        {screen === 'hotkeys' && <HotkeysScreen settings={settings} patch={patch} />}
+        {screen === 'general' && <GeneralScreen settings={settings} patch={patch} />}
+      </div>
+
+      <footer className="statusbar">
+        <span>
+          {state.lastError ?? 'Hazır'}
+        </span>
+        <span className="mono">
+          {state.state === 'recording' ? `REC ${formatClock(state.recordingElapsedSec)}` : ''}
+        </span>
+      </footer>
+    </>
+  )
+}
+
+/* The mark is a capture ring with a gap — a recording dot inside a frame that
+   is deliberately not closed, reading as "replay" rather than "record". */
+function Brand() {
+  return (
+    <div className="brand">
+      <svg className="brand__mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <path
+          className="mark__ring"
+          d="M10 2.25a7.75 7.75 0 1 1-6.4 3.38"
+          fill="none"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+        />
+        <circle className="mark__dot" cx="10" cy="10" r="3.4" />
+      </svg>
+      <span className="brand__word">
+        Capture <em>Assistant</em>
+      </span>
+    </div>
+  )
+}
+
+function StateBadge({ state }: { state: SupervisorState }) {
+  const map = {
+    idle: { text: 'Boşta', dot: 'neutral' },
+    armed: { text: 'Tampon açık', dot: 'success' },
+    recording: { text: 'Kaydediyor', dot: 'success' },
+    assembling: { text: 'Klip hazırlanıyor', dot: 'success' }
+  } as const
+  const current = map[state.state]
+  return (
+    <span className="badge badge--muted">
+      <span className={`badge__dot badge__dot--${current.dot}`} />
+      {current.text}
+    </span>
+  )
+}
+
+function StatusRow({
+  label,
+  value,
+  tone
+}: {
+  label: string
+  value: string
+  tone: 'success' | 'neutral'
+}) {
+  return (
+    <div className="status-row">
+      <span className="status-row__label">{label}</span>
+      <span className="badge badge--muted">
+        <span className={`badge__dot badge__dot--${tone}`} />
+        {value}
+      </span>
+    </div>
+  )
+}

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="tr" data-mode="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Capture Assistant — göstergeler</title>
+    <style>
+      /* Deliberately dependency-free and framework-free: this page must not
+         run a framework while a game is foreground. The pulsing dot is a CSS
+         keyframe so it lives on the compositor thread and stops entirely when
+         the window is hidden. No requestAnimationFrame anywhere. */
+      html, body { margin: 0; background: transparent; }
+      body {
+        font: 500 12px/1 "Inter", system-ui, sans-serif;
+        color: #f2f2f2;
+        user-select: none;
+        cursor: default;
+      }
+      .badges { display: grid; gap: 6px; justify-items: end; padding: 12px; }
+      .badge {
+        display: none;
+        align-items: center;
+        gap: 7px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: rgba(16, 16, 18, .82);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
+      }
+      .badge.is-on { display: inline-flex; }
+      .dot { width: 8px; height: 8px; border-radius: 999px; }
+      .dot--rec { background: oklch(57.7% 0.245 27.325); animation: pulse 2s ease-in-out infinite; }
+      .dot--replay { background: oklch(52% 0.095 158); }
+      .dot--mic { background: oklch(76.5% 0.177 163.223); }
+      .time { font-variant-numeric: tabular-nums; }
+      @keyframes pulse { 50% { opacity: .35; } }
+      @media (prefers-reduced-motion: reduce) { .dot--rec { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <div class="badges">
+      <div class="badge" id="rec"><span class="dot dot--rec"></span>REC <span class="time" id="elapsed">0:00</span></div>
+      <div class="badge" id="replay"><span class="dot dot--replay"></span>REPLAY</div>
+      <div class="badge" id="mic"><span class="dot dot--mic"></span>MIC</div>
+    </div>
+    <script type="module" src="/src/overlay.ts"></script>
+  </body>
+</html>
