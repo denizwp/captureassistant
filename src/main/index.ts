@@ -2,10 +2,11 @@ import { app, session } from 'electron'
 import { join } from 'node:path'
 import { SettingsStore } from './store'
 import { beginQuit, createMainWindow } from './windows'
-import { registerIpc } from './ipc'
+import { broadcast, registerIpc } from './ipc'
 import { AudioEngine } from './audio'
 import { SupervisorHost } from './supervisor'
 import { TrayController } from './tray'
+import { HotkeyManager } from './hotkeys'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
 
@@ -77,10 +78,12 @@ if (!singleInstance) {
       window.focus()
     }
 
-    const tray = new TrayController(store, {
-      showWindow,
-      toggleReplay: (enabled) => {
-        void (enabled ? audio.start(store.get().audio) : Promise.resolve(audio.stop()))
+    // One place that knows how to perform each action, so the tray, the
+    // renderer and the hotkeys cannot drift apart.
+    const actions = {
+      toggleReplay: (enabled: boolean) => {
+        if (enabled) void audio.start(store.get().audio)
+        else audio.stop()
         store.update({ replay: { enabled } })
         supervisor.arm(enabled)
       },
@@ -90,6 +93,27 @@ if (!singleInstance) {
         supervisor.record(!recording)
       },
       saveReplay: () => supervisor.saveReplay(),
+      toggleMic: () => {
+        const next = store.update({
+          audio: { micEnabled: !store.get().audio.micEnabled }
+        })
+        audio.setGains(
+          next.audio.systemEnabled ? next.audio.systemGain : 0,
+          next.audio.micEnabled ? next.audio.micGain : 0
+        )
+        broadcast('settings', next)
+        broadcast('toast', {
+          kind: 'info',
+          message: next.audio.micEnabled ? 'Mikrofon açık' : 'Mikrofon kapalı'
+        })
+      }
+    }
+
+    const tray = new TrayController(store, {
+      showWindow,
+      toggleReplay: (enabled) => actions.toggleReplay(enabled),
+      toggleRecording: () => actions.toggleRecording(),
+      saveReplay: () => actions.saveReplay(),
       quit: () => {
         beginQuit()
         app.quit()
@@ -98,7 +122,40 @@ if (!singleInstance) {
     tray.start()
     supervisor.on('state', (state) => tray.update(state))
 
-    registerIpc(store, audio, supervisor, () => tray.refresh())
+    const hotkeys = new HotkeyManager()
+    hotkeys.on('trigger', (action: string) => {
+      switch (action) {
+        case 'saveReplay':
+          actions.saveReplay()
+          break
+        case 'toggleRecord':
+          actions.toggleRecording()
+          break
+        case 'toggleReplayBuffer':
+          actions.toggleReplay(supervisor.getState().state === 'idle')
+          break
+        case 'toggleMic':
+          actions.toggleMic()
+          break
+      }
+    })
+    hotkeys.on('conflict', ({ accelerator }: { accelerator: string }) => {
+      broadcast('toast', {
+        kind: 'warning',
+        message: `${accelerator} başka bir uygulama tarafından kullanılıyor.`
+      })
+    })
+    hotkeys.on('warning', (message: string) => {
+      broadcast('toast', { kind: 'warning', message })
+    })
+    hotkeys.start(store.get().hotkeys)
+
+    registerIpc(store, audio, supervisor, () => {
+      tray.refresh()
+      hotkeys.bind(store.get().hotkeys)
+    })
+
+    app.on('will-quit', () => hotkeys.stop())
 
     app.on('activate', showWindow)
   })
