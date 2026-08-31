@@ -111,7 +111,7 @@ export async function runCaptureSelfTest(
     const drift = actual === null ? null : actual - held
     log(`manual clip: ${recorded.split(/[\\/]/).at(-1)}`)
     log(`  held ${held.toFixed(2)}s, clip ${actual?.toFixed(2) ?? '?'}s, drift ${drift?.toFixed(2) ?? '?'}s`)
-    if (drift !== null && Math.abs(drift) > 1.5) {
+    if (drift !== null && Math.abs(drift) > 0.4) {
       log(`  FAILED: recording is off by ${drift.toFixed(2)}s`)
     } else if (drift !== null) {
       log('  OK: recording lines up with the button')

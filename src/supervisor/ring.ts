@@ -52,7 +52,7 @@ export class Ring {
   private bytesPerSec = 0
 
   private writtenBytes = 0
-  private lastSegmentAt = 0
+  private timeBase = 0
   private bytesOnDisk = 0
 
   constructor(private readonly dir: string) {}
@@ -79,11 +79,20 @@ export class Ring {
    * by up to one segment. Anything that has to line up with the moment a key was
    * pressed needs this instead.
    */
+  /*
+   * Noticing a segment always happens some time after it closed, so the wall
+   * clock at that moment can only ever be late. Keeping the earliest estimate
+   * we have seen converges on the real start of the timeline within a couple of
+   * segments, which is what anything lining up with a keypress needs.
+   */
+  private anchor(end: number): void {
+    const candidate = Date.now() - end * 1000
+    if (this.timeBase === 0 || candidate < this.timeBase) this.timeBase = candidate
+  }
+
   get liveEnd(): number {
-    if (this.lastSegmentAt === 0) return this.newestEnd
-    return (
-      this.newestEnd + Math.min(SEGMENT_SEC, (Date.now() - this.lastSegmentAt) / 1000)
-    )
+    if (this.timeBase === 0) return this.newestEnd
+    return Math.max(this.newestEnd, (Date.now() - this.timeBase) / 1000)
   }
 
   beginRun(params: Omit<Run, 'id' | 'firstSegment' | 'lastSegment'>): void {
@@ -126,7 +135,7 @@ export class Ring {
         if (segment) {
           this.segments.push(segment)
           added.push(segment)
-          this.lastSegmentAt = Date.now()
+          this.anchor(segment.end)
         }
       }
       return added
@@ -273,7 +282,7 @@ export class Ring {
     this.bytesOnDisk = 0
     this.lastBytes = 0
     this.bytesPerSec = 0
-    this.lastSegmentAt = 0
+    this.timeBase = 0
 
     await unlinkPatiently(this.indexPath)
     await unlinkPatiently(join(this.dir, 'runs.json'))
