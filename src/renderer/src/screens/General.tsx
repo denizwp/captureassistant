@@ -2,7 +2,7 @@ import type { DeepPartial } from '@shared/ipc'
 import type { IndicatorCorner, Settings } from '@shared/settings'
 import { api } from '../api'
 import { Section, Segmented, Setting, Slider, Switch } from '../components/controls'
-import art from '../../assets/character-panel.png'
+import { characterArt } from '../art'
 
 const CORNERS: { value: IndicatorCorner; label: string }[] = [
   { value: 'bottom-right', label: 'Sağ alt' },
@@ -23,7 +23,7 @@ export function GeneralScreen({
   return (
     <main className="content">
       <div className="pane">
-        <img className="pane__art" src={art} alt="" aria-hidden="true" />
+        <img className="pane__art" src={characterArt} alt="" aria-hidden="true" />
         <div className="pane__header">
           <span className="pane__title">Genel</span>
         </div>
@@ -52,10 +52,10 @@ export function GeneralScreen({
               }
             />
             <Setting
-              label="Waifu"
+              label="waifu :?"
               control={
                 <Switch
-                  label="Waifu"
+                  label="waifu :?"
                   checked={app.showCharacterArt}
                   onChange={(showCharacterArt) => patch({ app: { showCharacterArt } })}
                 />
@@ -77,17 +77,6 @@ export function GeneralScreen({
           </Section>
 
           <Section title="Ekran göstergeleri">
-            <Setting
-              label="Ses efektleri"
-              hint="Kayıt başlarken, dururken ve klip kaydedilirken kısa bir ton çalar."
-              control={
-                <Switch
-                  label="Ses efektleri"
-                  checked={app.soundCues}
-                  onChange={(soundCues) => patch({ app: { soundCues } })}
-                />
-              }
-            />
             <Setting
               label="Konum"
               control={

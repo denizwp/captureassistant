@@ -9,7 +9,6 @@ export interface CaptureSettings {
   bitrateKbps: number
   codec: CodecId
 
-  scale: number
   preset: QualityPreset
 }
 
@@ -57,7 +56,6 @@ export interface AppSettings {
 
   alwaysShowIndicators: boolean
   showCharacterArt: boolean
-  soundCues: boolean
 }
 
 export interface Settings {
@@ -79,7 +77,6 @@ export const DEFAULT_SETTINGS: Settings = {
     fps: 60,
     bitrateKbps: 0,
     codec: 'h264',
-    scale: 1,
     preset: 'balanced'
   },
   replay: {
@@ -114,7 +111,6 @@ export const DEFAULT_SETTINGS: Settings = {
     indicatorCorner: 'bottom-right',
     indicatorOpacity: 0.9,
     alwaysShowIndicators: true,
-    showCharacterArt: false,
-    soundCues: true
+    showCharacterArt: false
   }
 }

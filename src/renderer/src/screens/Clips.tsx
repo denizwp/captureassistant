@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { Clip } from '@shared/state'
 import { api } from '../api'
 import { formatBytes, formatClock, formatDate } from '../format'
-import art from '../../assets/character-panel.png'
+import { characterArt } from '../art'
 
 export function ClipsScreen() {
   const [clips, setClips] = useState<Clip[]>([])
@@ -36,7 +36,7 @@ export function ClipsScreen() {
   return (
     <main className="content">
       <div className="pane">
-        <img className="pane__art" src={art} alt="" aria-hidden="true" />
+        <img className="pane__art" src={characterArt} alt="" aria-hidden="true" />
         <div className="pane__header">
           <span className="pane__title">Kayıtlar</span>
           <div className="setting__control">

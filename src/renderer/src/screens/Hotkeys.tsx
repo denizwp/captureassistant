@@ -3,7 +3,7 @@ import type { DeepPartial } from '@shared/ipc'
 import type { HotkeySettings, Settings } from '@shared/settings'
 import { DEFAULT_SETTINGS } from '@shared/settings'
 import { Keys, Section } from '../components/controls'
-import art from '../../assets/character-panel.png'
+import { characterArt } from '../art'
 
 const BINDINGS: { key: keyof HotkeySettings; label: string; hint?: string }[] = [
   { key: 'saveReplay', label: 'Geçmiş kaydı kaydet' },
@@ -94,7 +94,7 @@ export function HotkeysScreen({
   return (
     <main className="content">
       <div className="pane">
-        <img className="pane__art" src={art} alt="" aria-hidden="true" />
+        <img className="pane__art" src={characterArt} alt="" aria-hidden="true" />
         <div className="pane__header">
           <span className="pane__title">Kısayollar</span>
           {listening ? (

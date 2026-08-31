@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import type { DeepPartial } from '@shared/ipc'
 import type { Settings } from '@shared/settings'
 import { Section, Setting, Slider, Switch } from '../components/controls'
 import { Select } from '../components/Select'
-import art from '../../assets/character-panel.png'
+import { api } from '../api'
+import { characterArt } from '../art'
 
 const DEFAULT_MIC = '__default__'
 
@@ -14,11 +16,20 @@ export function AudioScreen({
   patch: (next: DeepPartial<Settings>) => void
 }) {
   const { audio } = settings
+  const [devices, setDevices] = useState<{ id: string; label: string }[]>([])
+
+  useEffect(() => {
+    // The list only exists once the capture page has run enumerateDevices, so
+    // ask again whenever the mic is switched on.
+    void api.listMicDevices().then(setDevices)
+    const timer = setTimeout(() => void api.listMicDevices().then(setDevices), 1200)
+    return () => clearTimeout(timer)
+  }, [audio.micEnabled])
 
   return (
     <main className="content">
       <div className="pane">
-        <img className="pane__art" src={art} alt="" aria-hidden="true" />
+        <img className="pane__art" src={characterArt} alt="" aria-hidden="true" />
         <div className="pane__header">
           <span className="pane__title">Ses</span>
         </div>
@@ -69,7 +80,6 @@ export function AudioScreen({
             />
             <Setting
               label="Cihaz"
-              hint="Cihaz listesi kayıt motoru bağlandığında dolar."
               control={
                 <div style={{ width: 260 }}>
                   <Select
@@ -79,7 +89,10 @@ export function AudioScreen({
                     onChange={(id) =>
                       patch({ audio: { micDeviceId: id === DEFAULT_MIC ? null : id } })
                     }
-                    options={[{ value: DEFAULT_MIC, label: 'Varsayılan mikrofon' }]}
+                    options={[
+                      { value: DEFAULT_MIC, label: 'Varsayılan mikrofon' },
+                      ...devices.map((device) => ({ value: device.id, label: device.label }))
+                    ]}
                   />
                 </div>
               }

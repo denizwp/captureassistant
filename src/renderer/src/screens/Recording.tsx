@@ -7,7 +7,7 @@ import { api, type MonitorInfo } from '../api'
 import { estimateRingBytes, formatBytes, formatDuration } from '../format'
 import { Section, Segmented, Setting, Slider, Switch } from '../components/controls'
 import { Select } from '../components/Select'
-import art from '../../assets/character-panel.png'
+import { characterArt } from '../art'
 
 const PRESET_MAXRATE_KBPS: Record<QualityPreset, number> = {
   low: 20_000,
@@ -47,7 +47,7 @@ export function RecordingScreen({
   return (
     <main className="content">
       <div className="pane">
-        <img className="pane__art" src={art} alt="" aria-hidden="true" />
+        <img className="pane__art" src={characterArt} alt="" aria-hidden="true" />
         <div className="pane__header">
           <span className="pane__title">Kayıt</span>
         </div>
@@ -163,21 +163,6 @@ export function RecordingScreen({
                       value={capture.codec}
                       onChange={(codec) => patch({ capture: { codec } })}
                       options={CODECS.map((c) => ({ value: c.value, label: c.label }))}
-                    />
-                  }
-                />
-                <Setting
-                  label="Çözünürlük ölçeği"
-                  hint="GPU üzerinde küçültülür; dosya boyutunu ve encoder yükünü düşürür."
-                  control={
-                    <Segmented<string>
-                      value={String(capture.scale)}
-                      onChange={(scale) => patch({ capture: { scale: Number(scale) } })}
-                      options={[
-                        { value: '0.5', label: '%50' },
-                        { value: '0.75', label: '%75' },
-                        { value: '1', label: 'Tam' }
-                      ]}
                     />
                   }
                 />

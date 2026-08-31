@@ -336,9 +336,7 @@
     mask-image: linear-gradient(to right, transparent 0%, transparent 26%, #000 72%);
 }
 
-:root:not([data-mode="dark"]) :root:not([data-art="on"]) .pane__art { display: none; }
-
-.pane__art { mix-blend-mode: multiply; opacity: .10; }
+:root:not([data-mode="dark"]) .pane__art { mix-blend-mode: multiply; opacity: .10; }
 
 .empty {
     height: 100%;
