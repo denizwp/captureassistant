@@ -1,7 +1,8 @@
 import { app, screen, utilityProcess } from 'electron'
-import { existsSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { join, sep } from 'node:path'
 import { EventEmitter } from 'node:events'
+import { tmpdir } from 'node:os'
 import type { Settings } from '@shared/settings'
 import { INITIAL_STATE, type SupervisorState } from '@shared/state'
 import { AUDIO_PIPE } from './audio'
@@ -28,6 +29,18 @@ export function ffmpegPath(): string {
   return existsSync(packaged)
     ? packaged
     : join(app.getAppPath(), 'resources', 'ffmpeg', 'ffmpeg.exe')
+}
+
+/** The supervisor failing is invisible from the UI — the buffer just never
+ *  fills — so its exit codes and stderr always go to a file. */
+function trace(message: string): void {
+  try {
+    appendFileSync(
+      join(tmpdir(), 'ca-supervisor.log'),
+      `${new Date().toISOString()} ${message}
+`
+    )
+  } catch {}
 }
 
 export class SupervisorHost extends EventEmitter {
@@ -57,6 +70,7 @@ export class SupervisorHost extends EventEmitter {
       `${sep}app.asar${sep}`,
       `${sep}app.asar.unpacked${sep}`
     )
+    trace(`fork entry: ${entry} exists=${existsSync(entry)}`)
     const proc = utilityProcess.fork(entry, [], {
       serviceName: 'capture-supervisor',
       stdio: 'pipe'
@@ -64,10 +78,14 @@ export class SupervisorHost extends EventEmitter {
     this.process = proc
 
     proc.stderr?.on('data', (chunk: Buffer) => {
-      this.emit('log', { level: 'error', line: chunk.toString().trim() })
+      const line = chunk.toString().trim()
+      trace(`stderr: ${line}`)
+      this.emit('log', { level: 'error', line })
     })
+    proc.stdout?.on('data', (chunk: Buffer) => trace(`stdout: ${chunk.toString().trim()}`))
 
     proc.on('exit', (code) => {
+      trace(`exit code=${code} restarts=${this.restarts}`)
       this.process = null
       if (this.stopped) return
 
@@ -109,9 +127,11 @@ export class SupervisorHost extends EventEmitter {
         this.emit('state', this.current)
         break
       case 'toast':
+        trace(`toast(${String(message['kind'])}): ${String(message['message'])}`)
         this.emit('toast', { kind: message['kind'], message: message['message'] })
         break
       case 'log':
+        trace(`[${String(message['level'])}] ${String(message['line'])}`)
         this.emit('log', { level: message['level'], line: message['line'] })
         break
       case 'clip':
@@ -134,6 +154,7 @@ export class SupervisorHost extends EventEmitter {
   }
 
   arm(enabled: boolean): void {
+    trace(`arm(${enabled}) process=${this.process ? 'alive' : 'null'}`)
     this.send({ type: 'arm', enabled })
   }
 
