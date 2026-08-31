@@ -119,15 +119,6 @@ export function App() {
         {screen === 'hotkeys' && <HotkeysScreen settings={settings} patch={patch} />}
         {screen === 'general' && <GeneralScreen settings={settings} patch={patch} />}
       </div>
-
-      <footer className="statusbar">
-        <span>
-          {state.lastError ?? 'Hazır'}
-        </span>
-        <span className="mono">
-          {state.state === 'recording' ? `REC ${formatClock(state.recordingElapsedSec)}` : ''}
-        </span>
-      </footer>
     </>
   )
 }
@@ -143,7 +134,18 @@ function Brand() {
   )
 }
 
+/** Carries everything the removed statusbar used to: state, the recording
+ *  timer, and any pipeline error. */
 function StateBadge({ state }: { state: SupervisorState }) {
+  if (state.lastError) {
+    return (
+      <span className="badge badge--error" title={state.lastError}>
+        <span className="badge__dot badge__dot--danger" />
+        {state.lastError}
+      </span>
+    )
+  }
+
   const map = {
     idle: { text: 'Boşta', dot: 'neutral' },
     armed: { text: 'Tampon açık', dot: 'success' },
@@ -151,10 +153,14 @@ function StateBadge({ state }: { state: SupervisorState }) {
     assembling: { text: 'Klip hazırlanıyor', dot: 'success' }
   } as const
   const current = map[state.state]
+
   return (
     <span className="badge badge--muted">
       <span className={`badge__dot badge__dot--${current.dot}`} />
       {current.text}
+      {state.state === 'recording' && (
+        <span className="mono">{formatClock(state.recordingElapsedSec)}</span>
+      )}
     </span>
   )
 }
