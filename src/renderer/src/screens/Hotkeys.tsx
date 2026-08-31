@@ -5,11 +5,7 @@ import { Keys, Section } from '../components/controls'
 import art from '../../assets/character-panel.png'
 
 const BINDINGS: { key: keyof HotkeySettings; label: string; hint?: string }[] = [
-  {
-    key: 'saveReplay',
-    label: 'Geçmiş kaydı kaydet',
-    hint: 'NVIDIA App da Alt+F10 kullanır; ikisi birden kuruluysa birini değiştir.'
-  },
+  { key: 'saveReplay', label: 'Geçmiş kaydı kaydet' },
   { key: 'toggleRecord', label: 'Manuel kaydı başlat / durdur' },
   { key: 'toggleReplayBuffer', label: 'Geçmiş kaydı aç / kapa' },
   { key: 'toggleMic', label: 'Mikrofonu aç / kapa' },
