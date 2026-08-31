@@ -23,12 +23,16 @@ export class AudioEngine extends EventEmitter {
   private server: Server | null = null
   private client: Socket | null = null
   private ready = false
-  private pending: Buffer[] = []
   private devices: MicDevice[] = []
   private appAudio = new Map<number, Buffer>()
   private appAudioActive = false
   private systemGain = 1
   private systemPeak = 0
+  private mic: Buffer[] = []
+  private micBytes = 0
+  private pump: NodeJS.Timeout | null = null
+  private owedFrom = 0
+  private sentFrames = 0
 
 
   constructor(private readonly preload = join(__dirname, '../preload/audio.js')) {
@@ -41,15 +45,23 @@ export class AudioEngine extends EventEmitter {
   }
 
   /*
-   * Helpers and the capture page are clocked independently, so rather than try
-   * to keep them in lockstep each helper's samples are queued and the page's
-   * blocks decide how many get consumed. Short means pad with silence, long
-   * means drop the oldest — a queue left to grow becomes ever-increasing lag
-   * against the video.
+   * The pipe is clocked here, off the wall clock, rather than by whatever
+   * arrives from the capture page. ffmpeg reads video and audio through one
+   * scheduler: when the audio side falls behind real time it holds the whole
+   * graph back, ddagrab stops being polled, and the screen capture collapses
+   * with it — measured at 58 fps down to 2 fps for an audio feed a third of a
+   * second late. Sources that are late are padded with silence instead.
    */
-  private static readonly MAX_PENDING_BLOCKS = 5
+  private static readonly FRAME_BYTES = 16
 
+  private static readonly RATE = 48_000
+
+  private static readonly PUMP_MS = 10
+
+  /* Roughly 200ms per source. Past that, older audio is lag, not content. */
   private static readonly MAX_QUEUE_BYTES = 48_000 * 2 * 4 * 0.2
+
+  private static readonly MAX_MIC_BYTES = 48_000 * 4 * 4 * 0.2
 
   setSystemGain(gain: number): void {
     this.systemGain = Math.max(0, gain)
@@ -78,24 +90,81 @@ export class AudioEngine extends EventEmitter {
     this.appAudio.delete(source)
   }
 
-  private applyAppAudio(block: Buffer): Buffer {
-    if (!this.appAudioActive) return block
+  private pushMic(chunk: Buffer): void {
+    this.mic.push(chunk)
+    this.micBytes += chunk.length
+    while (this.micBytes > AudioEngine.MAX_MIC_BYTES && this.mic.length > 1) {
+      this.micBytes -= this.mic.shift()!.length
+    }
+  }
 
-    const frames = block.length / 16
+  private takeMic(bytes: number): Buffer {
+    if (bytes <= 0 || this.mic.length === 0) return Buffer.alloc(0)
+    const joined = this.mic.length === 1 ? this.mic[0]! : Buffer.concat(this.mic, this.micBytes)
+    const usable = Math.min(bytes, joined.length - (joined.length % AudioEngine.FRAME_BYTES))
+    const rest = joined.subarray(usable)
+    this.mic = rest.length ? [rest] : []
+    this.micBytes = rest.length
+    return joined.subarray(0, usable)
+  }
+
+  private startPump(): void {
+    this.stopPump()
+    this.owedFrom = Date.now()
+    this.sentFrames = 0
+    this.pump = setInterval(() => this.emitOwed(), AudioEngine.PUMP_MS)
+  }
+
+  private stopPump(): void {
+    if (this.pump) clearInterval(this.pump)
+    this.pump = null
+    this.mic = []
+    this.micBytes = 0
+  }
+
+  /*
+   * Emit exactly as many frames as the clock says are due. Timers on Windows
+   * round up to ~15ms, so this has to work from elapsed time rather than a
+   * fixed block per tick or the pipe quietly runs a third slow.
+   */
+  private emitOwed(): void {
+    const client = this.client
+    if (!client) return
+
+    const due = Math.floor(((Date.now() - this.owedFrom) / 1000) * AudioEngine.RATE)
+    let frames = due - this.sentFrames
+    if (frames <= 0) return
+    // After a long stall, catching up in full would dump a burst of silence
+    // into the recording; skip the gap instead.
+    const cap = AudioEngine.RATE / 2
+    if (frames > cap) frames = cap
+    this.sentFrames = due
+
+    const block = Buffer.alloc(frames * AudioEngine.FRAME_BYTES)
+    const mic = this.takeMic(frames * AudioEngine.FRAME_BYTES)
+    mic.copy(block, 0, 0, mic.length)
+    this.mixSystem(block, frames)
+    client.write(block)
+  }
+
+  /* Helper streams are stereo; they land on channels 0 and 1, mic keeps 2 and 3. */
+  private mixSystem(block: Buffer, frames: number): void {
+    if (!this.appAudioActive) return
+
     const wanted = frames * 8
-
     const takes: Buffer[] = []
     for (const [source, queued] of this.appAudio) {
       const usable = Math.min(wanted, queued.length - (queued.length % 8))
       takes.push(queued.subarray(0, usable))
       this.appAudio.set(source, queued.subarray(usable))
     }
+    if (takes.length === 0) return
 
     for (let i = 0; i < frames; i++) {
       let left = 0
       let right = 0
+      const at = i * 8
       for (const take of takes) {
-        const at = i * 8
         if (at + 8 > take.length) continue
         left += take.readFloatLE(at)
         right += take.readFloatLE(at + 4)
@@ -107,7 +176,6 @@ export class AudioEngine extends EventEmitter {
       block.writeFloatLE(left, i * 16)
       block.writeFloatLE(right, i * 16 + 4)
     }
-    return block
   }
 
   async listen(): Promise<void> {
@@ -115,14 +183,15 @@ export class AudioEngine extends EventEmitter {
     await new Promise<void>((resolve, reject) => {
       const server = createServer((socket) => {
         this.client = socket
-        // Nothing buffered gets replayed: it would land seconds of stale sound
-        // at the head of the recording and push the whole track out of sync.
-        this.pending = []
+        // The clock starts when ffmpeg connects, so nothing recorded before it
+        // opened the pipe can land at the head of the take.
+        this.startPump()
         socket.on('error', () => undefined)
         socket.on('close', () => {
-          if (this.client === socket) this.client = null
+          if (this.client !== socket) return
+          this.client = null
+          this.stopPump()
         })
-
       })
       server.once('error', reject)
       server.listen(AUDIO_PIPE, () => {
@@ -182,6 +251,7 @@ export class AudioEngine extends EventEmitter {
   }
 
   stop(): void {
+    this.stopPump()
     this.send({ type: 'stop' })
   }
 
@@ -243,18 +313,7 @@ export class AudioEngine extends EventEmitter {
     })
 
     ipcMain.on('audio:pcm', (_e, buffer: ArrayBuffer) => {
-      const chunk = this.applyAppAudio(Buffer.from(buffer))
-      if (this.client) {
-        this.client.write(chunk)
-      } else if (this.pending.length < AudioEngine.MAX_PENDING_BLOCKS) {
-        this.pending.push(chunk)
-      } else {
-        // Only enough to cover ffmpeg opening the pipe. Holding more means
-        // replaying stale sound the moment it connects, which lands seconds of
-        // old audio at the head of the recording and pushes it ahead of video.
-        this.pending.shift()
-        this.pending.push(chunk)
-      }
+      this.pushMic(Buffer.from(buffer))
     })
 
     ipcMain.on('audio:levels', (_e, payload: { system: number; mic: number }) => {
