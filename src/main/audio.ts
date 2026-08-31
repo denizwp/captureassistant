@@ -27,6 +27,7 @@ export class AudioEngine extends EventEmitter {
   private devices: MicDevice[] = []
   private appAudio = new Map<number, Buffer>()
   private appAudioActive = false
+  private skipBytes = 0
 
   constructor(private readonly preload = join(__dirname, '../preload/audio.js')) {
     super()
@@ -47,6 +48,19 @@ export class AudioEngine extends EventEmitter {
   private static readonly MAX_PENDING_BLOCKS = 5
 
   private static readonly MAX_QUEUE_BYTES = 48_000 * 2 * 4 * 0.2
+
+  /*
+   * Samples reach ffmpeg later than the frames they belong to, and it stamps
+   * them on arrival, so the sound ends up behind the picture. Dropping that much
+   * from the head of the stream pulls it back into line. Doing it here rather
+   * than with an atrim in the filter graph matters: a filter that keeps
+   * discarding audio starves the ddagrab source and the capture drops to a few
+   * frames a second.
+   */
+  setSkip(seconds: number): void {
+    const frames = Math.max(0, Math.round(seconds * 48_000))
+    this.skipBytes = frames * 4 * 4
+  }
 
   useAppAudio(active: boolean): void {
     this.appAudioActive = active
@@ -224,7 +238,13 @@ export class AudioEngine extends EventEmitter {
     })
 
     ipcMain.on('audio:pcm', (_e, buffer: ArrayBuffer) => {
-      const chunk = this.applyAppAudio(Buffer.from(buffer))
+      let chunk = this.applyAppAudio(Buffer.from(buffer))
+      if (this.skipBytes > 0) {
+        const drop = Math.min(this.skipBytes, chunk.length)
+        this.skipBytes -= drop
+        chunk = chunk.subarray(drop)
+        if (chunk.length === 0) return
+      }
       if (this.client) {
         this.client.write(chunk)
       } else if (this.pending.length < AudioEngine.MAX_PENDING_BLOCKS) {

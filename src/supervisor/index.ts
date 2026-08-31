@@ -112,8 +112,7 @@ async function startEncoder(): Promise<void> {
     startNumber: ring.nextSegmentNumber,
     drawMouse: true,
 
-    audioPipe: audioDisabled ? null : audioPipe,
-    audioLatencySec
+    audioPipe: audioDisabled ? null : audioPipe
   })
 
   ring.beginRun({

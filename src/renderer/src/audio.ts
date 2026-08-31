@@ -129,7 +129,7 @@ function setMetering(enabled: boolean): void {
 async function start(config: AudioConfig): Promise<void> {
   await stop()
 
-  const ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' })
+  const ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'playback' })
   context = ctx
 
   await ctx.audioWorklet.addModule(new URL('./pcm-worklet.js', import.meta.url).href)

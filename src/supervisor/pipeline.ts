@@ -37,15 +37,11 @@ export interface RingArgsInput {
   drawMouse: boolean
 
   audioPipe: string | null
-  audioLatencySec: number
 }
 
 export function buildRingArgs(input: RingArgsInput): string[] {
   const { capture, encoder, outputIdx, adapterIdx, ringDir, startNumber, drawMouse, audioPipe } =
     input
-  // Pull the audio back by however long it took to reach us, so it lines up with
-  // the frames it belongs to instead of the moment it arrived.
-  const audioShift = Math.max(0, Math.min(1, input.audioLatencySec))
   const maxrateKbps =
     capture.bitrateKbps > 0 ? capture.bitrateKbps : PRESET_MAXRATE_KBPS[capture.preset]
 
@@ -79,7 +75,7 @@ export function buildRingArgs(input: RingArgsInput): string[] {
       : []),
 
     '-filter_complex',
-    audioPipe ? `${source}[v];${audioGraph(audioShift)}` : `${source}[v]`,
+    audioPipe ? `${source}[v];${audioGraph()}` : `${source}[v]`,
     ...audioMaps(input),
 
     ...encoderArgs(encoder, capture, maxrateKbps),
@@ -94,17 +90,9 @@ export function buildRingArgs(input: RingArgsInput): string[] {
   ]
 }
 
-/*
- * -itsoffset looks like the tool for this but the muxer clamps the negative
- * timestamps it produces straight back to zero. Dropping the head of the stream
- * and rebasing actually moves the sound earlier.
- */
-function audioGraph(shiftSec: number): string {
-  const advance =
-    shiftSec > 0.001 ? `atrim=start=${shiftSec.toFixed(3)},asetpts=PTS-STARTPTS,` : ''
-
+function audioGraph(): string {
   return [
-    `[0:a]${advance}channelsplit=channel_layout=quad[sl][sr][ml][mr]`,
+    '[0:a]channelsplit=channel_layout=quad[sl][sr][ml][mr]',
     '[sl][sr]join=inputs=2:channel_layout=stereo[sys]',
     '[ml][mr]join=inputs=2:channel_layout=stereo[mic]',
     // normalize=0 matters: the default divides by the input count, so turning

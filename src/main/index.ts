@@ -42,7 +42,9 @@ if (!singleInstance) {
     // path and would otherwise run without the sync compensation.
     let measuredLatency = 0
     const pushAudioLatency = (measured: number): void => {
-      supervisor.setAudioLatency(measured + store.get().audio.syncOffsetMs / 1000)
+      const shift = measured + store.get().audio.syncOffsetMs / 1000
+      audio.setSkip(shift)
+      supervisor.setAudioLatency(shift)
     }
     audio.on('status', (payload: { latencySec?: number }) => {
       if (typeof payload.latencySec !== 'number') return
