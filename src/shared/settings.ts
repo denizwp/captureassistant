@@ -39,6 +39,7 @@ export interface HotkeySettings {
   toggleReplayBuffer: string
   toggleMic: string
   toggleIndicators: string
+  toggleHud: string
 }
 
 export interface OutputSettings {
@@ -98,7 +99,8 @@ export const DEFAULT_SETTINGS: Settings = {
     toggleRecord: 'Alt+F9',
     toggleReplayBuffer: 'Alt+F8',
     toggleMic: 'Alt+M',
-    toggleIndicators: 'Alt+F7'
+    toggleIndicators: 'Alt+F7',
+    toggleHud: 'Alt+Z'
   },
   output: {
     dir: null,

@@ -9,6 +9,7 @@ import { TrayController } from './tray'
 import { HotkeyManager } from './hotkeys'
 import { Overlay } from './overlay'
 import { warnIfHotkeysBlocked } from './elevation'
+import { Hud } from './hud'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
 
@@ -102,6 +103,10 @@ if (!singleInstance) {
     tray.start()
     supervisor.on('state', (state) => tray.update(state))
 
+    const hud = new Hud()
+    // Built and loaded up front: creating it on the first keypress would show an
+    // unpainted window for a frame.
+    hud.create()
     const overlay = new Overlay()
     overlay.create(store.get().app)
     supervisor.on('state', (state) => {
@@ -127,6 +132,9 @@ if (!singleInstance) {
           break
         case 'toggleMic':
           actions.toggleMic()
+          break
+        case 'toggleHud':
+          hud.toggle()
           break
         case 'toggleIndicators': {
           const next = store.update({
@@ -154,15 +162,24 @@ if (!singleInstance) {
     // plus an armed buffer actually mean the buffer is running after a reboot.
     if (store.get().replay.enabled) actions.toggleReplay(true)
 
-    registerIpc(store, audio, supervisor, () => {
-      tray.refresh()
-      hotkeys.bind(store.get().hotkeys)
-      overlay.update(supervisor.getState(), store.get().app)
+    registerIpc(store, audio, supervisor, {
+      onSettingsChanged: () => {
+        tray.refresh()
+        hotkeys.bind(store.get().hotkeys)
+        overlay.update(supervisor.getState(), store.get().app)
+      },
+      toggleMic: () => actions.toggleMic(),
+      openSettings: () => {
+        hud.hide()
+        showWindow()
+      },
+      closeHud: () => hud.hide()
     })
 
     app.on('will-quit', () => {
       hotkeys.stop()
       overlay.destroy()
+      hud.destroy()
     })
 
     app.on('activate', showWindow)

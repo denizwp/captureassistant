@@ -10,7 +10,8 @@ const BINDINGS: { key: keyof HotkeySettings; label: string; hint?: string }[] = 
   { key: 'toggleRecord', label: 'Manuel kaydı başlat / durdur' },
   { key: 'toggleReplayBuffer', label: 'Geçmiş kaydı aç / kapa' },
   { key: 'toggleMic', label: 'Mikrofonu aç / kapa' },
-  { key: 'toggleIndicators', label: 'Göstergeleri göster / gizle' }
+  { key: 'toggleIndicators', label: 'Göstergeleri göster / gizle' },
+  { key: 'toggleHud', label: 'Oyun içi paneli aç / kapat' }
 ]
 
 const MODIFIER_KEYS = new Set(['Control', 'Alt', 'Shift', 'Meta'])

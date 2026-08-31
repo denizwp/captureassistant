@@ -9,12 +9,20 @@ import type { AudioEngine } from './audio'
 import type { SupervisorHost } from './supervisor'
 import { durationFor, thumbnailFor } from './thumbnails'
 
+export interface IpcHooks {
+  onSettingsChanged?: () => void
+  toggleMic?: () => void
+  openSettings?: () => void
+  closeHud?: () => void
+}
+
 export function registerIpc(
   store: SettingsStore,
   audio: AudioEngine,
   supervisor: SupervisorHost,
-  onSettingsChanged: () => void = () => undefined
+  hooks: IpcHooks = {}
 ): void {
+  const onSettingsChanged = hooks.onSettingsChanged ?? ((): void => undefined)
   const outputDir = (): string => store.get().output.dir ?? defaultOutputDir()
 
   applyLaunchAtLogin(store.get().app.launchAtLogin)
@@ -59,6 +67,10 @@ export function registerIpc(
   })
 
   ipcMain.handle('capture:save-replay', () => supervisor.saveReplay())
+  ipcMain.handle('capture:toggle-mic', () => hooks.toggleMic?.())
+
+  ipcMain.on('hud:open-settings', () => hooks.openSettings?.())
+  ipcMain.on('hud:close', () => hooks.closeHud?.())
 
   ipcMain.handle('audio:devices', () => {
     audio.refreshDevices()

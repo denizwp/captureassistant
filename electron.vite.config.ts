@@ -26,7 +26,8 @@ export default defineConfig({
         input: {
           index: r('src/preload/index.ts'),
           overlay: r('src/preload/overlay.ts'),
-          audio: r('src/preload/audio.ts')
+          audio: r('src/preload/audio.ts'),
+          hud: r('src/preload/hud.ts')
         }
       }
     }
@@ -41,7 +42,8 @@ export default defineConfig({
           index: r('src/renderer/index.html'),
 
           overlay: r('src/renderer/overlay.html'),
-          audio: r('src/renderer/audio.html')
+          audio: r('src/renderer/audio.html'),
+          hud: r('src/renderer/hud.html')
         }
       }
     }
