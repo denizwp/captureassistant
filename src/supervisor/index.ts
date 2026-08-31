@@ -178,14 +178,36 @@ async function startEncoder(): Promise<void> {
   })
 }
 
-function stopEncoder(): void {
+/**
+ * Stops the encoder and waits for the process to actually be gone.
+ *
+ * Windows refuses to unlink a file a live process still has open, so returning
+ * before ffmpeg has exited leaves `index.csv` locked and the next arm fails
+ * with EBUSY. Killing is not the same as having exited.
+ */
+async function stopEncoder(): Promise<void> {
+  const proc = child
   stopping = true
-  child?.kill()
   child = null
-  // A short window so the `close` handler sees the flag before it clears.
-  setTimeout(() => {
-    stopping = false
-  }, 300)
+
+  if (proc && proc.exitCode === null) {
+    await new Promise<void>((resolve) => {
+      const done = (): void => {
+        clearTimeout(force)
+        resolve()
+      }
+      // SIGTERM lets ffmpeg finish the segment it is writing; if it hangs on
+      // that, take it down hard rather than blocking the UI.
+      const force = setTimeout(() => {
+        proc.kill('SIGKILL')
+        setTimeout(resolve, 500)
+      }, 2000)
+      proc.once('close', done)
+      proc.kill()
+    })
+  }
+
+  stopping = false
 }
 
 function fail(message: string): void {
@@ -278,7 +300,7 @@ async function setArmed(enabled: boolean): Promise<void> {
   } else {
     if (state === 'recording') await stopRecording()
     state = 'idle'
-    stopEncoder()
+    await stopEncoder()
     await ring?.prune(0)
     ring = null
   }
@@ -323,7 +345,7 @@ async function stopRecording(): Promise<void> {
   await buildClip(from, to, 'Kayıt')
 
   if (!settings.replay.enabled) {
-    stopEncoder()
+    await stopEncoder()
     await ring.prune(0)
     ring = null
   }
@@ -429,8 +451,8 @@ async function handle(message: Incoming): Promise<void> {
       break
 
     case 'shutdown':
-      stopEncoder()
       state = 'idle'
+      await stopEncoder()
       break
   }
 }

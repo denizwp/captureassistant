@@ -1,4 +1,4 @@
-import { open, readFile, rm, stat, statfs, writeFile } from 'node:fs/promises'
+import { open, readdir, rm, stat, statfs, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { SEGMENT_SEC } from './pipeline'
 
@@ -284,8 +284,36 @@ export class Ring {
     this.csvOffset = 0
     this.carry = ''
     this.runId = 0
-    await rm(this.indexPath, { force: true })
-    const stale = await readFile(join(this.dir, 'runs.json'), 'utf8').catch(() => null)
-    if (stale !== null) await rm(join(this.dir, 'runs.json'), { force: true })
+
+    await unlinkPatiently(this.indexPath)
+    await unlinkPatiently(join(this.dir, 'runs.json'))
+
+    // Segments from the previous process cannot be joined to the run we are
+    // about to start, and leaving them would make the janitor's accounting and
+    // the disk guard both wrong.
+    const stale = await readdir(this.dir).catch(() => [] as string[])
+    for (const name of stale) {
+      if (/^seg_\d+\.ts$/.test(name)) await unlinkPatiently(join(this.dir, name))
+    }
   }
+}
+
+/**
+ * Deletes a file that a just-killed process may still be holding.
+ *
+ * Windows keeps a lock until the last handle closes, which can lag the process
+ * exit by a few milliseconds. Retrying briefly is the difference between a
+ * clean re-arm and an EBUSY thrown in the user's face.
+ */
+async function unlinkPatiently(path: string, attempts = 10): Promise<void> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await rm(path, { force: true })
+      return
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+  }
+  // Still locked after half a second: leave it. A stale index is recoverable
+  // (the tailer starts from offset zero anyway); failing the arm is not.
 }
