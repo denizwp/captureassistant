@@ -3,11 +3,6 @@ import type { DeepPartial } from '@shared/ipc'
 import type { Settings } from '@shared/settings'
 import { api } from './api'
 
-/**
- * Settings live in the main process. The renderer holds a copy for rendering
- * and sends patches; main is the single writer and echoes the merged result
- * back on the `settings` channel, so two open windows can't drift apart.
- */
 export function useSettings(): {
   settings: Settings | null
   patch: (next: DeepPartial<Settings>) => void
@@ -20,7 +15,6 @@ export function useSettings(): {
   }, [])
 
   const patch = useCallback((next: DeepPartial<Settings>) => {
-    // Optimistic: the echo from main will confirm or correct it.
     setSettings((current) => (current ? mergeLocal(current, next) : current))
     void api.setSettings(next)
   }, [])

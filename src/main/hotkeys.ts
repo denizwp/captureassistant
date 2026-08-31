@@ -7,8 +7,6 @@ import type { HotkeySettings } from '@shared/settings'
 
 export type HotkeyAction = keyof HotkeySettings
 
-/** Electron accelerator key names -> uiohook keycodes. Only the keys an
- *  accelerator can actually name; anything else is rejected at bind time. */
 const KEYCODES: Record<string, number> = {
   ...Object.fromEntries(
     Object.entries(UiohookKey).filter(([, value]) => typeof value === 'number')
@@ -63,14 +61,6 @@ function parse(action: HotkeyAction, accelerator: string): Binding | null {
   }
 }
 
-/**
- * Set CA_DEBUG_HOTKEYS=1 to record every key the hook sees.
- *
- * Worth having a switch for: when a binding does not fire there is no way to
- * tell from outside whether the hook is dead, the modifiers did not match, or
- * the action ran and did nothing. Electron on Windows does not attach to the
- * parent console, so this goes to a file.
- */
 const DEBUG = process.env['CA_DEBUG_HOTKEYS'] === '1'
 let debugPath = ''
 
@@ -79,31 +69,13 @@ function debug(message: string): void {
   if (!debugPath) debugPath = join(app.getPath('temp'), 'ca-hotkeys.log')
   try {
     appendFileSync(debugPath, `${new Date().toISOString()} ${message}\n`)
-  } catch {
-    // Diagnostics must never take the app down.
-  }
+  } catch {}
 }
 
-/** Long enough to swallow the second delivery of one physical press, short
- *  enough that a deliberate double-tap still registers twice. */
 const DEDUP_MS = 250
 
-/** Windows silently stops calling a low-level hook that overruns
- *  `LowLevelHooksTimeout`, and never tells you. Periodic reinstallation is the
- *  only defence. */
 const WATCHDOG_MS = 30_000
 
-/**
- * Global hotkeys, on two independent paths.
- *
- * The low-level hook is primary because `RegisterHotKey` — which is what
- * Electron's `globalShortcut` uses — is *exclusive*: it steals the combination
- * from every other app, and some games (League of Legends is the usual example)
- * block it outright. A `WH_KEYBOARD_LL` hook only observes, never consumes, so
- * game input is untouched. `globalShortcut` stays registered as a second path
- * for the cases where the hook cannot be installed, with a dedup window so one
- * press does not fire twice.
- */
 export class HotkeyManager extends EventEmitter {
   private bindings: Binding[] = []
   private hookRunning = false
@@ -124,7 +96,6 @@ export class HotkeyManager extends EventEmitter {
     this.stopHook()
   }
 
-  /** Rebinding is cheap; the hook itself keeps running. */
   bind(hotkeys: HotkeySettings): void {
     this.bindings = []
     globalShortcut.unregisterAll()
@@ -142,8 +113,6 @@ export class HotkeyManager extends EventEmitter {
       )
 
       try {
-        // Registration failing means another app already owns the combination.
-        // Not fatal — the hook still sees it — but worth surfacing.
         if (!globalShortcut.register(accelerator, () => this.fire(action, 'globalShortcut'))) {
           this.emit('conflict', { action, accelerator })
         }
@@ -161,8 +130,6 @@ export class HotkeyManager extends EventEmitter {
       this.hookRunning = true
       debug('hook started')
     } catch (error) {
-      // Anti-cheat or a locked-down session can refuse the hook. globalShortcut
-      // carries the feature alone in that case.
       this.emit('warning', `Klavye dinleyicisi kurulamadı: ${String(error)}`)
     }
   }
@@ -172,19 +139,10 @@ export class HotkeyManager extends EventEmitter {
     try {
       uIOhook.off('keydown', this.onKeyDown)
       uIOhook.stop()
-    } catch {
-      // Already gone.
-    }
+    } catch {}
     this.hookRunning = false
   }
 
-  /**
-   * Reinstalls the hook if it has gone quiet.
-   *
-   * A machine can genuinely sit untouched for thirty seconds, so silence alone
-   * is not proof the hook died — but reinstalling costs nothing and is the only
-   * way back from a hook Windows has dropped.
-   */
   private checkHook(): void {
     if (!this.hookRunning) {
       this.startHook()
@@ -220,7 +178,7 @@ export class HotkeyManager extends EventEmitter {
   private fire(action: HotkeyAction, source: 'hook' | 'globalShortcut'): void {
     const now = Date.now()
     const previous = this.lastFired.get(action) ?? 0
-    // Both paths see the same press; whichever arrives first wins.
+
     if (now - previous < DEDUP_MS) {
       debug(`deduped ${action} from ${source}`)
       return

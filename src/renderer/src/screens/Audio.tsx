@@ -4,7 +4,6 @@ import { Section, Setting, Slider, Switch } from '../components/controls'
 import { Select } from '../components/Select'
 import art from '../../assets/character-panel.png'
 
-/** Sentinel for the system default device. */
 const DEFAULT_MIC = '__default__'
 
 export function AudioScreen({

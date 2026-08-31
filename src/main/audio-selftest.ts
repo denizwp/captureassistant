@@ -13,19 +13,9 @@ function ffmpegPath(): string {
   return existsSync(packaged) ? packaged : join(app.getAppPath(), 'resources', 'ffmpeg', 'ffmpeg.exe')
 }
 
-/**
- * Records ten seconds through the real audio path — loopback capture, the
- * worklet, the IPC hop and the named pipe — into a wav, then reports whether
- * either source actually carried signal.
- *
- * This exists because every part of that chain fails silently: a broken
- * loopback handler, a worklet that is never pulled, or a pipe nobody connects
- * to all look identical from the outside (a stream of zeroes).
- */
 export async function runAudioSelfTest(audio: AudioEngine, store: SettingsStore): Promise<void> {
   const out = join(app.getPath('temp'), 'ca-audio-selftest.wav')
-  // Electron on Windows does not attach to the parent console, so anything
-  // written to stdout here is simply lost. Log to a file instead.
+
   const logPath = join(app.getPath('temp'), 'ca-audio-selftest.log')
   writeFileSync(logPath, '')
   const log = (message: string): void => {
@@ -84,7 +74,7 @@ export async function runAudioSelfTest(audio: AudioEngine, store: SettingsStore)
     const child = spawn(ffmpegPath(), args, { stdio: ['ignore', 'pipe', 'pipe'] })
     child.stdout?.on('data', (d: Buffer) => log(`ffmpeg: ${d.toString().trim()}`))
     child.stderr?.on('data', (d: Buffer) => log(`ffmpeg: ${d.toString().trim()}`))
-    // If nothing ever connects to the pipe, ffmpeg blocks forever.
+
     const kill = setTimeout(() => {
       log('ffmpeg did not finish in 25s — killing')
       child.kill()
@@ -100,7 +90,6 @@ export async function runAudioSelfTest(audio: AudioEngine, store: SettingsStore)
 
   if (code !== 0) return
 
-  // astats per channel: system is 0/1, mic is 2/3. A dead path reads -inf.
   const { stdout, stderr } = await run(ffmpegPath(), [
     '-hide_banner', '-v', 'error',
     '-i', out,

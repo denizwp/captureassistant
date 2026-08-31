@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
-/** Mirrors `max-height` on `.select__popup`. */
 const POPUP_MAX_H = 240
 
 export interface SelectOption<T extends string> {
@@ -8,14 +7,6 @@ export interface SelectOption<T extends string> {
   label: string
 }
 
-/**
- * Trigger plus popup listbox — deliberately not a native `<select>`, which on
- * Windows draws an OS dropdown that ignores the theme entirely.
- *
- * Keyboard contract matches the source design system: Enter/Space/ArrowDown
- * open, arrows move the active option, Enter/Space commit, Escape closes and
- * returns focus to the trigger.
- */
 export function Select<T extends string>({
   options,
   value,
@@ -49,15 +40,12 @@ export function Select<T extends string>({
 
   const openAtSelection = useCallback(() => {
     setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0)
-    // The popup sits inside a scrolling pane, so near the bottom edge it would
-    // be clipped. Measure once on open and flip it above the trigger.
+
     const rect = triggerRef.current?.getBoundingClientRect()
     if (rect) setDropUp(window.innerHeight - rect.bottom < POPUP_MAX_H + 16)
     setOpen(true)
   }, [selectedIndex])
 
-  // Move DOM focus with the active index so `:focus` styling and screen
-  // readers stay in step without a separate roving-tabindex scheme.
   useEffect(() => {
     if (open) optionRefs.current[activeIndex]?.focus()
   }, [open, activeIndex])

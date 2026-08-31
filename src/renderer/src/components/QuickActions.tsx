@@ -4,12 +4,6 @@ import { api } from '../api'
 import { formatDuration } from '../format'
 import { Keys } from './controls'
 
-/**
- * The three things people actually do, on the left rail so they are reachable
- * without hunting through settings — the hotkeys are the fast path, not the
- * only path. Each button carries its own binding as a hint so the two stay
- * connected in the user's head.
- */
 export function QuickActions({
   settings,
   state
@@ -44,9 +38,7 @@ export function QuickActions({
       <button
         type="button"
         className="btn btn--block btn--action btn--secondary"
-        // Keyed off the engine rather than the stored setting: a setting left
-        // over from a previous session would otherwise leave this enabled with
-        // nothing behind it.
+
         disabled={state.state !== 'armed'}
         title={
           armed

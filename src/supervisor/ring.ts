@@ -5,8 +5,7 @@ import { SEGMENT_SEC } from './pipeline'
 export interface Segment {
   index: number
   file: string
-  /** Absolute seconds on the ring timeline; continuous across the whole run
-   *  because the muxer runs with `-reset_timestamps 0`. */
+
   start: number
   end: number
   runId: number
@@ -23,10 +22,9 @@ export interface Run {
   codec: string
 }
 
-/** A range of segments the janitor must not touch. */
 interface Pin {
   lo: number
-  /** null means "up to whatever is newest" — an in-progress manual recording. */
+
   hi: number | null
   owner: string
   expiresAt: number
@@ -42,14 +40,6 @@ export interface RingStats {
 
 const PIN_TTL_MS = 5 * 60_000
 
-/**
- * The on-disk ring.
- *
- * Everything is driven off the `index.csv` the segment muxer writes — one
- * `file,start,end` line per *closed* segment. Reading that is exact and costs
- * nothing; the alternative, `readdir` plus `ffprobe` per file, would be
- * hundreds of stat calls a second for information we are already being told.
- */
 export class Ring {
   private segments: Segment[] = []
   private pins: Pin[] = []
@@ -60,7 +50,7 @@ export class Ring {
   private lastBytes = 0
   private lastBytesAt = Date.now()
   private bytesPerSec = 0
-  /** Monotonic: every segment counted once, never decremented by pruning. */
+
   private writtenBytes = 0
   private bytesOnDisk = 0
 
@@ -70,8 +60,6 @@ export class Ring {
     return join(this.dir, 'index.csv')
   }
 
-  /** Next value for `-segment_start_number`, so numbering survives a respawn
-   *  and the janitor's view of the ring stays contiguous. */
   get nextSegmentNumber(): number {
     const last = this.segments.at(-1)
     return last ? last.index + 1 : 0
@@ -98,12 +86,6 @@ export class Ring {
     void this.persistRuns()
   }
 
-  /**
-   * Reads whatever the muxer has appended since last time.
-   *
-   * A partial trailing line is normal — the muxer may be mid-write — so it is
-   * carried over rather than parsed.
-   */
   async poll(): Promise<Segment[]> {
     let handle
     try {
@@ -154,7 +136,6 @@ export class Ring {
     }
   }
 
-  /** Sizes are read lazily so the hot path stays free of stat calls. */
   async measure(): Promise<void> {
     let total = 0
     for (const segment of this.segments) {
@@ -162,10 +143,7 @@ export class Ring {
         segment.bytes = await stat(segment.file)
           .then((s) => s.size)
           .catch(() => 0)
-        // Counted once, when first seen. Deriving the rate from what is
-        // currently on disk instead would read as zero every time the janitor
-        // prunes, and the readout would flicker between a real number and
-        // nothing.
+
         this.writtenBytes += segment.bytes
       }
       total += segment.bytes
@@ -177,8 +155,7 @@ export class Ring {
     if (elapsed < 2) return
 
     const rate = (this.writtenBytes - this.lastBytes) / elapsed
-    // Segments only land every couple of seconds, so the raw figure is bursty.
-    // Smooth it rather than showing a number that jumps around.
+
     this.bytesPerSec = this.bytesPerSec > 0 ? this.bytesPerSec * 0.6 + rate * 0.4 : rate
     this.lastBytes = this.writtenBytes
     this.lastBytesAt = now
@@ -198,13 +175,6 @@ export class Ring {
     return this.pins.some((pin) => index >= pin.lo && (pin.hi === null || index <= pin.hi))
   }
 
-  /**
-   * Drops segments that have aged out of the window the user asked for.
-   *
-   * The keep window is deliberately generous: the requested duration, plus the
-   * post-roll, plus two segments of slack so a hotkey pressed at the very edge
-   * of the buffer still finds its oldest segment on disk.
-   */
   async prune(keepSec: number): Promise<number> {
     const cutoff = this.newestEnd - (keepSec + SEGMENT_SEC * 2 + 10)
     if (cutoff <= 0) return 0
@@ -223,7 +193,6 @@ export class Ring {
     return removed
   }
 
-  /** Segments covering [from, to], plus where inside the first one to start. */
   window(from: number, to: number): { segments: Segment[]; offsetIntoFirst: number } | null {
     const covering = this.segments.filter((s) => s.end > from && s.start < to)
     const first = covering[0]
@@ -245,12 +214,6 @@ export class Ring {
     }
   }
 
-  /**
-   * Runs with different parameters cannot be byte-concatenated — a resolution
-   * change mid-buffer would produce a clip most players choke on. Recording
-   * them lets the assembler trim to the newest compatible run and say so,
-   * rather than emitting something silently broken.
-   */
   compatibleFrom(segments: Segment[]): Segment[] {
     const last = segments.at(-1)
     if (!last) return segments
@@ -267,7 +230,6 @@ export class Ring {
       )
       .map((r) => r.id)
 
-    // Walk back from the newest until a run that cannot be joined.
     const out: Segment[] = []
     for (let i = segments.length - 1; i >= 0; i--) {
       const segment = segments[i]
@@ -283,9 +245,6 @@ export class Ring {
     )
   }
 
-  /** Clears a stale ring left behind by a crash. Segments from a previous
-   *  process are unusable: we have no index for them and their timeline does
-   *  not line up with the run we are about to start. */
   async reset(): Promise<void> {
     this.segments = []
     this.runs = []
@@ -301,9 +260,6 @@ export class Ring {
     await unlinkPatiently(this.indexPath)
     await unlinkPatiently(join(this.dir, 'runs.json'))
 
-    // Segments from the previous process cannot be joined to the run we are
-    // about to start, and leaving them would make the janitor's accounting and
-    // the disk guard both wrong.
     const stale = await readdir(this.dir).catch(() => [] as string[])
     for (const name of stale) {
       if (/^seg_\d+\.ts$/.test(name)) await unlinkPatiently(join(this.dir, name))
@@ -311,13 +267,6 @@ export class Ring {
   }
 }
 
-/**
- * Deletes a file that a just-killed process may still be holding.
- *
- * Windows keeps a lock until the last handle closes, which can lag the process
- * exit by a few milliseconds. Retrying briefly is the difference between a
- * clean re-arm and an EBUSY thrown in the user's face.
- */
 async function unlinkPatiently(path: string, attempts = 10): Promise<void> {
   for (let i = 0; i < attempts; i++) {
     try {
@@ -327,18 +276,8 @@ async function unlinkPatiently(path: string, attempts = 10): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
   }
-  // Still locked after half a second: leave it. A stale index is recoverable
-  // (the tailer starts from offset zero anyway); failing the arm is not.
 }
 
-/**
- * Deletes segments left behind by a process that did not shut down cleanly.
- *
- * Anything in the ring directory at startup is orphaned by definition: the
- * supervisor starts idle, and segments only ever belong to a live encoder. If
- * this only ran when arming, a user who was killed mid-recording and never
- * armed again would keep gigabytes of temporary files forever.
- */
 export async function sweepOrphans(dir: string): Promise<{ files: number; bytes: number }> {
   const names = await readdir(dir).catch(() => [] as string[])
   let files = 0
@@ -355,7 +294,6 @@ export async function sweepOrphans(dir: string): Promise<{ files: number; bytes:
     bytes += size
   }
 
-  // Head segments from an assembly that was interrupted.
   const work = join(dir, 'work')
   const stale = await readdir(work).catch(() => [] as string[])
   for (const name of stale) {

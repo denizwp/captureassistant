@@ -37,8 +37,6 @@ export function App() {
     if (settings) document.documentElement.dataset['mode'] = settings.app.theme
   }, [settings])
 
-  // Nothing renders until settings arrive; it is one IPC round trip and
-  // flashing default values first would be worse than a blank frame.
   if (!settings) return null
 
   return (
@@ -144,8 +142,6 @@ function Brand() {
   )
 }
 
-/** Carries everything the removed statusbar used to: state, the recording
- *  timer, and any pipeline error. */
 function StateBadge({ state }: { state: SupervisorState }) {
   if (state.lastError) {
     return (

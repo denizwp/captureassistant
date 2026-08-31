@@ -7,14 +7,6 @@ import type { AudioEngine } from './audio'
 import type { SettingsStore } from './store'
 import type { SupervisorHost } from './supervisor'
 
-/**
- * Arms the buffer, lets it fill, then saves a replay — the whole capture path
- * end to end without touching the UI.
- *
- * Same reasoning as the audio self-test: every stage of this chain can fail
- * quietly. An encoder that never starts, a janitor that eats its own ring, or
- * an assembler that writes a zero-byte file all look the same from outside.
- */
 export async function runCaptureSelfTest(
   supervisor: SupervisorHost,
   audio: AudioEngine,
@@ -42,9 +34,6 @@ export async function runCaptureSelfTest(
   )
   supervisor.on('toast', (t: { kind: string; message: string }) => log(`  toast(${t.kind}): ${t.message}`))
 
-  // A short buffer keeps the test quick; the janitor still has to prune. The
-  // user's own values are put back at the end — a diagnostic that quietly
-  // rewrites settings is worse than no diagnostic.
   const original = store.get().replay
   const settings = store.update({ replay: { durationSec: 60, enabled: true } })
   const outDir = settings.output.dir ?? join(app.getPath('videos'), 'Capture Assistant')

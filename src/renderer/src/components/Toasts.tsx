@@ -7,6 +7,7 @@ interface Toast {
   id: number
   kind: ToastKind
   message: string
+  leaving: boolean
 }
 
 const ICONS: Record<ToastKind, string> = {
@@ -16,13 +17,14 @@ const ICONS: Record<ToastKind, string> = {
   error: 'ph-x-circle'
 }
 
-/** Errors stay up longer — they usually need reading twice. */
 const LIFETIME: Record<ToastKind, number> = {
   info: 3000,
   success: 3000,
   warning: 4500,
   error: 6000
 }
+
+const EXIT_MS = 200
 
 export function Toasts() {
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -34,13 +36,19 @@ export function Toasts() {
     const unsubscribe = api.on('toast', (payload) => {
       const { kind, message } = payload as { kind: ToastKind; message: string }
       const id = nextId.current++
-      setToasts((current) => [...current, { id, kind, message }])
+      setToasts((current) => [...current, { id, kind, message, leaving: false }])
 
-      const timer = setTimeout(() => {
-        setToasts((current) => current.filter((t) => t.id !== id))
-        timers.delete(timer)
+      const fade = setTimeout(() => {
+        setToasts((current) => current.map((t) => (t.id === id ? { ...t, leaving: true } : t)))
+        timers.delete(fade)
+
+        const drop = setTimeout(() => {
+          setToasts((current) => current.filter((t) => t.id !== id))
+          timers.delete(drop)
+        }, EXIT_MS)
+        timers.add(drop)
       }, LIFETIME[kind])
-      timers.add(timer)
+      timers.add(fade)
     })
 
     return () => {
@@ -54,7 +62,10 @@ export function Toasts() {
   return (
     <div className="toasts" role="status" aria-live="polite">
       {toasts.map((toast) => (
-        <div key={toast.id} className={`toast toast--${toast.kind}`}>
+        <div
+          key={toast.id}
+          className={`toast toast--${toast.kind}${toast.leaving ? ' is-leaving' : ''}`}
+        >
           <i className={`ph ${ICONS[toast.kind]}`} />
           {toast.message}
         </div>

@@ -1,7 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('audioBridge', {
-  /** Raw interleaved f32le blocks on their way to the ffmpeg named pipe. */
   writePcm: (buffer: ArrayBuffer) => ipcRenderer.send('audio:pcm', buffer),
   ready: () => ipcRenderer.send('audio:ready'),
   status: (payload: unknown) => ipcRenderer.send('audio:status', payload),

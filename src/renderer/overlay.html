@@ -4,11 +4,7 @@
     <meta charset="UTF-8" />
     <title>Capture Assistant — göstergeler</title>
     <style>
-      /* Deliberately dependency-free: this page must not run a framework, a
-         webfont or a layout pass while a game is foreground. The icons are
-         inline SVG for the same reason. The pulsing dot is a CSS keyframe, so
-         it lives on the compositor thread and stops entirely when the window
-         is hidden. No requestAnimationFrame anywhere. */
+
       html, body { margin: 0; background: transparent; }
       body {
         height: 100vh;
@@ -19,9 +15,6 @@
         cursor: default;
       }
 
-      /* Always pinned to the top of the window: the window is taller than the
-         row because Chromium refuses to make it smaller, and the main process
-         positions the window so this top edge is where the badges belong. */
       body { align-items: flex-start; }
       body[data-corner$="right"] { justify-content: flex-end; }
       body[data-corner$="left"]  { justify-content: flex-start; }
@@ -43,11 +36,9 @@
       .badge svg { display: block; width: 13px; height: 13px; }
 
       .rec  { color: oklch(63.7% 0.237 25.331); }
-      .repl { color: oklch(58% 0.095 158); }
-      .mic  { color: oklch(76.5% 0.177 163.223); }
+      .repl { color: #f2f2f2; }
+      .mic  { color: #f2f2f2; }
 
-      /* Only the recording badge carries text — everything else is legible
-         from its icon alone. */
       .time {
         font-variant-numeric: tabular-nums;
         font-size: 11px;

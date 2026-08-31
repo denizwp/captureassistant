@@ -1,5 +1,3 @@
-/* Base — ported from biskuvu/eira_design.html (lines 213-247). */
-
 * { box-sizing: border-box; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
 html {
@@ -28,7 +26,6 @@ p { margin: 0; }
     font-variant-numeric: tabular-nums;
 }
 
-/* Phosphor glyphs align to the first line of adjacent text, not the block */
 .ph, [class^="ph-"], [class*=" ph-"] {
     display: inline-flex;
     align-items: center;

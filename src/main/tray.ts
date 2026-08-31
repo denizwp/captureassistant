@@ -9,8 +9,7 @@ function trayIcon(): Electron.NativeImage {
   const path = existsSync(packaged)
     ? packaged
     : join(app.getAppPath(), 'resources', 'icon.png')
-  // The source art is 256px; the shell wants 16-32 and scales a large source
-  // badly, so resize once here rather than leaving it to Windows.
+
   return nativeImage.createFromPath(path).resize({ width: 16, height: 16 })
 }
 
@@ -29,14 +28,6 @@ export interface TrayActions {
   quit(): void
 }
 
-/**
- * The tray is what keeps the buffer alive after the window closes — without it
- * the app has nowhere to live, and closing the window would mean losing the
- * recording the user just armed.
- *
- * The menu is rebuilt on state change only. Electron menus are immutable, and
- * an app that redraws its tray on a timer shows up in a profile for no reason.
- */
 export class TrayController {
   private tray: Tray | null = null
   private state: SupervisorState | null = null
@@ -61,7 +52,6 @@ export class TrayController {
     if (changed) this.render()
   }
 
-  /** Settings the menu reflects (replay duration, hotkeys) can change too. */
   refresh(): void {
     this.render()
   }

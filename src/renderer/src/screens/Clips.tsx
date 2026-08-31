@@ -18,7 +18,6 @@ export function ClipsScreen() {
     return api.on('clips', (payload) => setClips(payload as Clip[]))
   }, [refresh])
 
-  // Fetched after the list renders so the gallery never waits on ffmpeg.
   useEffect(() => {
     let cancelled = false
     for (const clip of clips) {

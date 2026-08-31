@@ -12,7 +12,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: r('src/main/index.ts'),
-          // Runs as an Electron utilityProcess, so it is a separate entry.
+
           supervisor: r('src/supervisor/index.ts')
         }
       }
@@ -38,11 +38,8 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          // Settings / gallery window (React).
           index: r('src/renderer/index.html'),
-          // Both of these stay dependency-free vanilla on purpose: the overlay
-          // must not run a framework while a game is foreground, and the audio
-          // page is a headless worklet pump.
+
           overlay: r('src/renderer/overlay.html'),
           audio: r('src/renderer/audio.html')
         }

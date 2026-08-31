@@ -1,17 +1,3 @@
-/**
- * Audio pump.
- *
- * FFmpeg has no WASAPI loopback input device on Windows, and the DirectShow
- * virtual-device route needs a driver install we do not want to inflict on
- * users. Chromium can do loopback capture, but only from a renderer — hence
- * this hidden page.
- *
- * Both sources feed one AudioContext and one worklet, so system audio and mic
- * are sampled off the same clock and cannot drift apart from each other by
- * construction. The four channels leave as one interleaved f32le stream and
- * are split again inside the ffmpeg filter graph.
- */
-
 interface AudioConfig {
   systemEnabled: boolean
   micEnabled: boolean
@@ -43,18 +29,7 @@ interface MicDevice {
 
 const SAMPLE_RATE = 48_000
 
-/**
- * Electron's main process turns this into WASAPI loopback.
- *
- * Audio-only is the path worth having — it skips `desktopCapturer` and never
- * starts a screen capture. The spec says `video: false` is invalid for
- * getDisplayMedia and some Chromium versions enforce that, so fall back to
- * asking for video and discarding the track.
- */
 async function captureLoopback(): Promise<MediaStream> {
-  // Chromium's capture pipeline downmixes to mono whenever the voice
-  // processing chain is engaged, so every one of these has to be off before it
-  // will hand back a stereo pair — which a game recorder needs.
   const audio: MediaTrackConstraints = {
     channelCount: 2,
     echoCancellation: false,
@@ -68,14 +43,6 @@ async function captureLoopback(): Promise<MediaStream> {
   }
 }
 
-/**
- * A gain stage pinned to two channels.
- *
- * `channelCountMode: 'explicit'` with speaker interpretation makes Web Audio
- * up-mix a mono source to stereo and down-mix a 5.1 one with the proper ITU
- * coefficients, so whatever the endpoint's mix format happens to be, what
- * leaves here is always a real stereo pair.
- */
 function stereoGain(ctx: AudioContext, value: number): GainNode {
   const gain = ctx.createGain()
   gain.channelCount = 2
@@ -85,9 +52,6 @@ function stereoGain(ctx: AudioContext, value: number): GainNode {
   return gain
 }
 
-/** Splits a stereo node into its two channels and lands them on consecutive
- *  merger inputs. Connecting the node itself twice would copy channel 0 to
- *  both and quietly collapse the source to mono. */
 function splitToMerger(
   ctx: AudioContext,
   node: AudioNode,
@@ -113,16 +77,13 @@ async function start(config: AudioConfig): Promise<void> {
   const ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'playback' })
   context = ctx
 
-  // `new URL(..., import.meta.url)` is the one form Vite rewrites correctly for
-  // both the dev server and a file:// production build.
   await ctx.audioWorklet.addModule(new URL('./pcm-worklet.js', import.meta.url).href)
 
-  // Four discrete channels: system L/R then mic L/R.
   merger = ctx.createChannelMerger(4)
 
   if (config.systemEnabled) {
     systemStream = await captureLoopback()
-    // Nothing here wants pixels; if a video track came back, drop it at once.
+
     for (const track of systemStream.getVideoTracks()) track.stop()
 
     const source = ctx.createMediaStreamSource(systemStream)
@@ -145,9 +106,6 @@ async function start(config: AudioConfig): Promise<void> {
   }
   merger.connect(pump)
 
-  // A node with nothing downstream of the destination is never pulled, so the
-  // worklet would simply not run. Route it through a silent gain instead of
-  // playing the capture back into the room.
   const sink = ctx.createGain()
   sink.gain.value = 0
   pump.connect(sink)
@@ -181,15 +139,6 @@ async function stop(): Promise<void> {
   }
 }
 
-/**
- * Adds the microphone to a graph that is already running.
- *
- * Turning the mic on used to be a gain change, which did nothing when the mic
- * had been off at arm time: there was no source in the graph to raise. Web
- * Audio lets a new source be connected to a live merger, so the branch is built
- * on demand — no new AudioContext, no gap in the PCM stream, and therefore no
- * drift against the video.
- */
 async function attachMic(deviceId: string | null, gain: number): Promise<void> {
   const ctx = context
   if (!ctx || !merger || micStream) return
@@ -197,7 +146,7 @@ async function attachMic(deviceId: string | null, gain: number): Promise<void> {
   micStream = await navigator.mediaDevices.getUserMedia({
     audio: {
       ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-      // We are recording, not making a call — leave the signal alone.
+
       echoCancellation: false,
       noiseSuppression: false,
       autoGainControl: false
@@ -210,8 +159,6 @@ async function attachMic(deviceId: string | null, gain: number): Promise<void> {
   splitToMerger(ctx, micGain, merger, 2)
 }
 
-/** Releases the device so Windows drops its microphone-in-use indicator.
- *  Channels 3 and 4 then carry silence, which keeps the stream continuous. */
 function detachMic(): void {
   micStream?.getTracks().forEach((track) => track.stop())
   micStream = null
@@ -219,14 +166,11 @@ function detachMic(): void {
   micGain = null
 }
 
-/** Applied live — toggling the mic mid-recording must not restart ffmpeg, or
- *  the ring breaks. */
 function setGains(config: Pick<AudioConfig, 'systemGain' | 'micGain'>): void {
   if (systemGain) systemGain.gain.value = config.systemGain
   if (micGain) micGain.gain.value = config.micGain
 }
 
-/** What the source actually handed us, as opposed to what we asked for. */
 function describeTrack(stream: MediaStream | null): string {
   const [track] = stream?.getAudioTracks() ?? []
   if (!track) return 'none'
@@ -276,8 +220,6 @@ window.audioBridge.on((payload) => {
   }
 })
 
-// Device changes (headset unplugged, default output switched) rebuild the
-// graph rather than killing ffmpeg — the pipe keeps flowing.
 navigator.mediaDevices.addEventListener('devicechange', () => {
   void listMics().then((devices) => window.audioBridge.status({ running: !!context, devices }))
 })

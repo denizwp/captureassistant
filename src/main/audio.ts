@@ -17,13 +17,6 @@ interface StatusPayload {
   devices?: MicDevice[]
 }
 
-/**
- * Owns the hidden capture page and the named pipe ffmpeg reads PCM from.
- *
- * The pipe server lives here rather than in the supervisor so a helper restart
- * (device change, default output switched) can be bridged with silence instead
- * of tearing down the encoder — killing ffmpeg would break the ring.
- */
 export class AudioEngine extends EventEmitter {
   private window: BrowserWindow | null = null
   private server: Server | null = null
@@ -41,8 +34,6 @@ export class AudioEngine extends EventEmitter {
     return this.devices
   }
 
-  /** Starts the pipe server. ffmpeg connects to it as a client, so this has to
-   *  be listening before the encoder is spawned. */
   async listen(): Promise<void> {
     if (this.server) return
     await new Promise<void>((resolve, reject) => {
@@ -52,7 +43,7 @@ export class AudioEngine extends EventEmitter {
         socket.on('close', () => {
           if (this.client === socket) this.client = null
         })
-        // Anything buffered while ffmpeg was still starting up.
+
         for (const chunk of this.pending) socket.write(chunk)
         this.pending = []
       })
@@ -97,8 +88,6 @@ export class AudioEngine extends EventEmitter {
     this.send({ type: 'stop' })
   }
 
-  /** Live gain change — used for the mic toggle during a recording, which must
-   *  never restart the pipeline. */
   setGains(systemGain: number, micGain: number): void {
     this.send({ type: 'gains', config: { systemGain, micGain } })
   }
@@ -126,8 +115,7 @@ export class AudioEngine extends EventEmitter {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
-        // This page has no visible output, but it must keep pumping audio when
-        // every other window is hidden.
+
         backgroundThrottling: false
       }
     })
@@ -154,8 +142,6 @@ export class AudioEngine extends EventEmitter {
       if (this.client) {
         this.client.write(chunk)
       } else if (this.pending.length < 250) {
-        // ~5 seconds of 48k/4ch f32 at 20 ms per block. Past that ffmpeg is not
-        // coming and holding more would just grow without bound.
         this.pending.push(chunk)
       }
     })
@@ -167,15 +153,6 @@ export class AudioEngine extends EventEmitter {
   }
 }
 
-/**
- * Answers the page's `getDisplayMedia` with WASAPI loopback audio.
- *
- * Chromium aborts the request if video was asked for and no video source comes
- * back, so the source has to match what was requested. The page prefers an
- * audio-only request precisely so this branch can skip `desktopCapturer`
- * entirely — a video source we would immediately throw away still spins up a
- * screen capture we are paying for.
- */
 function configureLoopback(target: Session = session.defaultSession): void {
   target.setDisplayMediaRequestHandler(
     (request, callback) => {

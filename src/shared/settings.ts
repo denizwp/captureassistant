@@ -1,33 +1,25 @@
-/**
- * Persisted settings shape. Every field here is user-visible somewhere in the
- * UI; anything derived (encoder choice, ring size in bytes) is computed at
- * runtime and deliberately NOT stored, so a hardware change can't leave us
- * pinned to an encoder that no longer exists.
- */
-
 export type CodecId = 'h264' | 'hevc' | 'av1'
 export type QualityPreset = 'low' | 'balanced' | 'high'
 export type IndicatorCorner = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
 
 export interface CaptureSettings {
-  /** DXGI output id, resolved to (adapter, output) at arm time. */
   monitorId: string | null
   fps: number
-  /** 0 means "derive from preset". */
+
   bitrateKbps: number
   codec: CodecId
-  /** 1 = native resolution, 0.75 / 0.5 downscale on the GPU. */
+
   scale: number
   preset: QualityPreset
 }
 
 export interface ReplaySettings {
   enabled: boolean
-  /** 60..1200 seconds, always a multiple of 30 (the 30s slider step). */
+
   durationSec: number
-  /** Seconds captured *after* the hotkey press. */
+
   postRollSec: number
-  /** null = <userData>/ring */
+
   bufferDir: string | null
 }
 
@@ -35,10 +27,10 @@ export interface AudioSettings {
   systemEnabled: boolean
   systemGain: number
   micEnabled: boolean
-  /** WASAPI/Chromium device id; null = system default. */
+
   micDeviceId: string | null
   micGain: number
-  /** Write System and Mic as extra tracks alongside the mix. */
+
   separateTracks: boolean
 }
 
@@ -52,7 +44,7 @@ export interface HotkeySettings {
 
 export interface OutputSettings {
   dir: string | null
-  /** Tokens: {app} {game} {date} {time} */
+
   filenameTemplate: string
 }
 
@@ -62,9 +54,7 @@ export interface AppSettings {
   theme: 'dark' | 'light'
   indicatorCorner: IndicatorCorner
   indicatorOpacity: number
-  /** Keep the badges up the whole time the buffer or a recording is running.
-   *  On by default: seeing at a glance that you are recording is the point of
-   *  having them. Turning it off makes them appear only on a state change. */
+
   alwaysShowIndicators: boolean
   soundCues: boolean
 }

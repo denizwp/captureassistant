@@ -13,14 +13,6 @@ export function ffmpegPath(): string {
     : join(app.getAppPath(), 'resources', 'ffmpeg', 'ffmpeg.exe')
 }
 
-/**
- * Main-process handle on the capture supervisor.
- *
- * A utilityProcess already has a direct structured-clone channel to main that
- * does not route through a renderer, so state keeps flowing while every window
- * is closed. Isolating the supervisor means a crash in the segment or assembly
- * logic cannot take the tray and the hotkeys down with it.
- */
 export class SupervisorHost extends EventEmitter {
   private process: Electron.UtilityProcess | null = null
   private current: SupervisorState = INITIAL_STATE
@@ -48,8 +40,6 @@ export class SupervisorHost extends EventEmitter {
     })
     this.process = proc
 
-    // ffmpeg's own output is forwarded over the port; this only catches a
-    // crash in the supervisor itself.
     proc.stderr?.on('data', (chunk: Buffer) => {
       this.emit('log', { level: 'error', line: chunk.toString().trim() })
     })
@@ -58,9 +48,6 @@ export class SupervisorHost extends EventEmitter {
       this.process = null
       if (this.stopped) return
 
-      // Whatever took it down, the app is deaf without it — no buffer, no
-      // hotkey does anything. Bring it back rather than leaving the user with
-      // a dead engine and a toast.
       this.restarts += 1
       const giveUp = this.restarts > 5
       this.current = {
@@ -114,7 +101,6 @@ export class SupervisorHost extends EventEmitter {
   }
 
   updateSettings(settings: Settings): void {
-    // Kept so a restart comes back configured the way the user left it.
     this.settings = settings
     this.send({ type: 'settings', settings })
   }

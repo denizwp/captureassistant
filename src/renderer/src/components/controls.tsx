@@ -1,7 +1,5 @@
 import type { ReactNode } from 'react'
 
-/* ── Switch ─────────────────────────────────────────────────────────── */
-
 export function Switch({
   checked,
   onChange,
@@ -26,8 +24,6 @@ export function Switch({
   )
 }
 
-/* ── Slider ─────────────────────────────────────────────────────────── */
-
 export function Slider({
   min,
   max,
@@ -45,7 +41,6 @@ export function Slider({
   disabled?: boolean
   label: string
 }) {
-  // The filled portion of the track is drawn from this custom property.
   const fill = max === min ? 0 : ((value - min) / (max - min)) * 100
   return (
     <input
@@ -62,8 +57,6 @@ export function Slider({
     />
   )
 }
-
-/* ── Segmented control ──────────────────────────────────────────────── */
 
 export function Segmented<T extends string>({
   options,
@@ -91,8 +84,6 @@ export function Segmented<T extends string>({
     </div>
   )
 }
-
-/* ── Setting row ────────────────────────────────────────────────────── */
 
 export function Setting({
   label,
@@ -125,9 +116,6 @@ export function Section({ title, children }: { title: string; children: ReactNod
   )
 }
 
-/* ── Keycap ─────────────────────────────────────────────────────────── */
-
-/** Renders "Alt+F10" as separate keycaps. */
 export function Keys({ combo }: { combo: string }) {
   const keys = combo.split('+')
   return (

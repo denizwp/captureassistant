@@ -1,11 +1,3 @@
-/**
- * Capture supervisor — runs as an Electron utilityProcess.
- *
- * Owns the ffmpeg ring encoder, the segment index, the janitor, the disk guard
- * and the clip assembler. It lives out of the main process so a leak or crash
- * in the segment or assembly logic cannot take down the tray, the hotkeys, or
- * the sibling processes of an in-flight recording.
- */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -33,7 +25,6 @@ type Incoming =
   | { type: 'save-replay' }
   | { type: 'shutdown' }
 
-/** How long the disk guard insists on keeping free beyond the ring itself. */
 const DISK_HEADROOM_BYTES = 5 * 1024 ** 3
 
 let settings: Settings | null = null
@@ -50,8 +41,6 @@ let stopping = false
 let consecutiveFailures = 0
 let startedAt = 0
 
-/** A process that dies faster than this never really ran; anything longer is
- *  treated as a healthy run that hit an access-lost, which is routine. */
 const HEALTHY_RUN_MS = 5000
 const MAX_FAST_FAILURES = 4
 
@@ -96,18 +85,6 @@ function vendorOf(id: string): 'nvidia' | 'amd' | 'intel' | 'software' {
   return 'software'
 }
 
-/* ── ffmpeg lifecycle ───────────────────────────────────────────────── */
-
-/**
- * Starts the ring encoder.
- *
- * `vsrc_ddagrab.c` does not handle `DXGI_ERROR_ACCESS_LOST`, and access-lost is
- * raised on fullscreen transitions, resolution changes, driver resets and the
- * UAC secure desktop — every one of which is routine while gaming. So ffmpeg
- * dying is not an error path here, it is the normal flow: respawn, continue
- * segment numbering, and record a new run so the assembler knows the two sides
- * may not be byte-concatenable.
- */
 async function startEncoder(): Promise<void> {
   if (child || !settings || !ring || !encoder) return
 
@@ -120,11 +97,7 @@ async function startEncoder(): Promise<void> {
     ringDir,
     startNumber: ring.nextSegmentNumber,
     drawMouse: true,
-    // The pipe always carries four channels; a disabled source is silence, not
-    // a missing channel, so the graph stays identical either way. That matters:
-    // the graph is fixed when the encoder starts, and the mic can be toggled
-    // long after. Making the track layout depend on the mic being on right now
-    // meant enabling it later had nowhere to go.
+
     audioPipe,
     separateTracks: settings.audio.separateTracks
   })
@@ -154,10 +127,6 @@ async function startEncoder(): Promise<void> {
     child = null
     if (stopping || state === 'idle') return
 
-    // A long-lived process that died is almost always DXGI access-lost — a
-    // fullscreen switch or a resolution change — and respawning is the normal
-    // flow. A process that dies immediately is a configuration error, and
-    // respawning it forever would just burn CPU while saying nothing useful.
     const lived = Date.now() - startedAt
     consecutiveFailures = lived < HEALTHY_RUN_MS ? consecutiveFailures + 1 : 0
 
@@ -171,7 +140,7 @@ async function startEncoder(): Promise<void> {
     log(`encoder exited (${code}) after ${(lived / 1000).toFixed(1)}s — restarting`, 'warning')
     if (restarting) return
     restarting = true
-    // Back off as failures repeat so a broken setup does not spin.
+
     const delay = Math.min(400 * 2 ** consecutiveFailures, 5000)
     setTimeout(() => {
       restarting = false
@@ -180,13 +149,6 @@ async function startEncoder(): Promise<void> {
   })
 }
 
-/**
- * Stops the encoder and waits for the process to actually be gone.
- *
- * Windows refuses to unlink a file a live process still has open, so returning
- * before ffmpeg has exited leaves `index.csv` locked and the next arm fails
- * with EBUSY. Killing is not the same as having exited.
- */
 async function stopEncoder(): Promise<void> {
   const proc = child
   stopping = true
@@ -198,8 +160,7 @@ async function stopEncoder(): Promise<void> {
         clearTimeout(force)
         resolve()
       }
-      // SIGTERM lets ffmpeg finish the segment it is writing; if it hangs on
-      // that, take it down hard rather than blocking the UI.
+
       const force = setTimeout(() => {
         proc.kill('SIGKILL')
         setTimeout(resolve, 500)
@@ -214,11 +175,6 @@ async function stopEncoder(): Promise<void> {
 
 let errorTimer: NodeJS.Timeout | null = null
 
-/**
- * The toast carries the message; the badge only needs to flag that something
- * went wrong. Leaving the error pinned there forever reads as a stuck app long
- * after the problem has passed, so it clears itself.
- */
 function fail(message: string): void {
   lastError = message
   log(message, 'error')
@@ -233,18 +189,12 @@ function fail(message: string): void {
   }, 6000)
 }
 
-/* ── ticks ──────────────────────────────────────────────────────────── */
-
-/** One second is fast enough for a two-second segment and slow enough that the
- *  supervisor stays invisible in a profile. */
 async function tick(): Promise<void> {
   if (!ring || !settings || state === 'idle') return
 
   await ring.poll()
   await ring.measure()
 
-  // While a manual recording is running its span is pinned, so the janitor
-  // trims only what is outside both the replay window and the recording.
   const keep = settings.replay.enabled
     ? settings.replay.durationSec + settings.replay.postRollSec
     : SEGMENT_SEC * 4
@@ -254,13 +204,6 @@ async function tick(): Promise<void> {
   await publish()
 }
 
-/**
- * Never let a recorder fill someone's system drive.
- *
- * The threshold is the worst-case ring plus headroom rather than the observed
- * size, because the observed size is low while the scene is static and can double
- * the moment something bright and fast happens.
- */
 async function diskGuard(): Promise<void> {
   if (!ring || !settings) return
   const stats = await ring.stats()
@@ -277,8 +220,6 @@ async function diskGuard(): Promise<void> {
     await setArmed(false)
   }
 }
-
-/* ── commands ───────────────────────────────────────────────────────── */
 
 async function ensureEncoder(): Promise<boolean> {
   if (encoder || !settings) return !!encoder
@@ -327,15 +268,13 @@ async function startRecording(): Promise<void> {
   if (!settings) return
   if (state === 'recording') return
 
-  // Recording shares the encoder with the buffer: if it is already running,
-  // this only marks a point on the timeline. Nothing extra is encoded.
   if (state === 'idle') {
     if (!(await ensureEncoder())) return
     ring = new Ring(ringDir)
     await mkdir(ringDir, { recursive: true })
     await ring.reset()
     await startEncoder()
-    // Give the muxer a moment to close its first segment.
+
     await new Promise((resolve) => setTimeout(resolve, 200))
   }
 
@@ -378,9 +317,6 @@ async function saveReplay(): Promise<void> {
     return
   }
 
-  // Segments only land on disk when the muxer closes them, so there is a short
-  // window after arming where the buffer genuinely holds nothing. That is
-  // normal, not a failure — say so plainly instead of throwing.
   await ring.poll()
   const to = ring.newestEnd
   if (to <= 0) {
@@ -440,8 +376,6 @@ function fileName(label: string): string {
   return `${label} ${date} - ${time}`
 }
 
-/* ── wiring ─────────────────────────────────────────────────────────── */
-
 port?.on('message', (event) => {
   const message = event.data as Incoming
   void handle(message).catch((error: unknown) => fail(String(error)))
@@ -456,8 +390,6 @@ async function handle(message: Incoming): Promise<void> {
       audioPipe = message.audioPipe
       settings = message.settings
 
-      // Whatever is in the ring directory now belongs to a process that is no
-      // longer running — a crash, a task-manager kill, a power cut.
       await mkdir(ringDir, { recursive: true })
       const swept = await sweepOrphans(ringDir)
       if (swept.files > 0) {
@@ -476,10 +408,9 @@ async function handle(message: Incoming): Promise<void> {
     case 'settings': {
       const previous = settings
       settings = message.settings
-      // Changing the codec invalidates the probed encoder.
+
       if (previous && previous.capture.codec !== settings.capture.codec) encoder = null
-      // Mic state is part of what we publish, so republish rather than making
-      // the badge wait for the next tick.
+
       await publish()
       break
     }

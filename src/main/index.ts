@@ -11,23 +11,6 @@ import { Overlay } from './overlay'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
 
-/**
- * Performance switches, applied before `app.whenReady()` because Chromium reads
- * them during startup.
- *
- * The UI is a static settings panel plus a 220x96 badge window, so software
- * rasterisation is plenty — and dropping the GPU process means Chromium stops
- * holding a D3D11 device that competes with the game for GPU scheduling. That
- * contention is the specific way Electron apps hurt frame rates.
- */
-// NOT disabled, despite the temptation: Chromium's software compositor has no
-// per-pixel alpha on Windows, so a transparent frameless window renders as a
-// solid black rectangle — which then sits in the corner of every clip and every
-// screenshot. The GPU process costs us a little contention; a black box in the
-// user's footage costs more.
-//   app.disableHardwareAcceleration()
-// Occlusion calculation walks desktop geometry on a timer and interacts badly
-// with fullscreen games.
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
 
 const singleInstance = app.requestSingleInstanceLock()
@@ -36,8 +19,6 @@ if (!singleInstance) {
 } else {
   const store = new SettingsStore()
 
-  // Assigned once the window exists. A second launch while the app sits in the
-  // tray should surface the window, not start a second recorder.
   let showWindow = (): void => undefined
   app.on('second-instance', () => showWindow())
 
@@ -47,15 +28,10 @@ if (!singleInstance) {
   app.whenReady().then(async () => {
     app.setAppUserModelId('com.captureassistant.app')
 
-    // The capture page needs the microphone; nothing else in the app asks for
-    // a permission, so anything other than `media` is denied outright.
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
       callback(permission === 'media')
     })
 
-    // `--audio-test` records ten seconds through the real audio path to a wav
-    // and exits. It is how the pipe, the worklet and the loopback handler get
-    // verified without driving the UI.
     if (process.argv.includes('--audio-test')) {
       await runAudioSelfTest(audio, store)
       app.quit()
@@ -70,8 +46,6 @@ if (!singleInstance) {
       return
     }
 
-    // The engine starts idle, so the stored flag has to agree. Leaving it true
-    // from a previous session made the UI offer a buffer that did not exist.
     store.update({ replay: { enabled: false } })
     supervisor.start(store.get())
 
@@ -84,8 +58,6 @@ if (!singleInstance) {
       window.focus()
     }
 
-    // One place that knows how to perform each action, so the tray, the
-    // renderer and the hotkeys cannot drift apart.
     const actions = {
       toggleReplay: (enabled: boolean) => {
         if (enabled) void audio.start(store.get().audio)
@@ -107,9 +79,7 @@ if (!singleInstance) {
           next.audio.systemEnabled ? next.audio.systemGain : 0,
           next.audio.micEnabled ? next.audio.micGain : 0
         )
-        // The supervisor owns `micActive` in the published state, so it has to
-        // hear about this too — otherwise the badge and the tray keep showing
-        // the old value.
+
         supervisor.updateSettings(next)
         broadcast('settings', next)
         broadcast('toast', {
@@ -192,8 +162,6 @@ if (!singleInstance) {
     void audio.close()
   })
 
-  // The tray keeps the app alive with no windows open — that is how the buffer
-  // survives closing the window.
   app.on('window-all-closed', () => {
     if (!store.get().app.minimizeToTray) app.quit()
   })

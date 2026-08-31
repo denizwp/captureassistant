@@ -1,13 +1,3 @@
-/**
- * Downloads the FFmpeg binaries the app shells out to.
- *
- * They are not committed — ffmpeg.exe and ffprobe.exe are ~145 MB each. Run
- * `npm run fetch:ffmpeg` after cloning.
- *
- * The build has to carry ddagrab (Desktop Duplication) plus the NVENC/AMF/QSV
- * encoders, which rules out the LGPL builds. BtbN's win64-gpl is the one this
- * project is verified against.
- */
 import { createWriteStream } from 'node:fs'
 import { mkdir, rm, readdir, copyFile, stat } from 'node:fs/promises'
 import { pipeline } from 'node:stream/promises'
@@ -54,7 +44,6 @@ async function main() {
     `Expand-Archive -Path '${zip}' -DestinationPath '${unpacked}' -Force`
   ])
 
-  // The archive nests everything under a single versioned directory.
   const [top] = await readdir(unpacked)
   if (!top) throw new Error('archive was empty')
   const bin = join(unpacked, top, 'bin')

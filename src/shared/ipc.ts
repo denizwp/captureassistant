@@ -1,7 +1,6 @@
 import type { Settings } from './settings'
 import type { Clip, SupervisorState } from './state'
 
-/** Renderer -> main, request/response. */
 export interface RendererApi {
   getSettings(): Promise<Settings>
   setSettings(patch: DeepPartial<Settings>): Promise<Settings>
@@ -24,7 +23,6 @@ export interface RendererApi {
   windowClose(): void
 }
 
-/** Main -> renderer, push only. */
 export interface RendererEvents {
   state: SupervisorState
   settings: Settings

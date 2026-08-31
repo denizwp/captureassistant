@@ -1,8 +1,3 @@
-/**
- * Overlay badge logic. The only JS that runs here after first paint is this
- * one message handler — no timers, no rendering loop. The elapsed counter is
- * pushed from the main process at 1 Hz, and only while the window is visible.
- */
 interface OverlayState {
   recording: boolean
   replayArmed: boolean

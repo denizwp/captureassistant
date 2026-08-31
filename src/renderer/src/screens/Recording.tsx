@@ -9,15 +9,12 @@ import { Section, Segmented, Setting, Slider, Switch } from '../components/contr
 import { Select } from '../components/Select'
 import art from '../../assets/character-panel.png'
 
-/** Worst-case ceilings the ring is sized against, matching the encoder args. */
 const PRESET_MAXRATE_KBPS: Record<QualityPreset, number> = {
   low: 20_000,
   balanced: 50_000,
   high: 90_000
 }
 
-/** Sentinel for "whatever Windows calls primary", since null is not a value
- *  the listbox can carry. */
 const PRIMARY = '__primary__'
 
 const CODECS: { value: CodecId; label: string; hint: string }[] = [
@@ -62,9 +59,7 @@ export function RecordingScreen({
               control={
                 <Switch
                   label="Geçmiş kaydı aç"
-                  // Reflects what the engine is actually doing, not what the
-                  // settings file remembers — the two can disagree, and the
-                  // engine is the one telling the truth.
+
                   checked={state.state !== 'idle'}
                   disabled={state.state === 'assembling'}
                   onChange={(enabled) => void api.toggleReplayBuffer(enabled)}
@@ -73,11 +68,10 @@ export function RecordingScreen({
             />
 
             <Setting
-              stacked
-              label={`Kaydedilecek süre — ${formatDuration(replay.durationSec)}`}
+              label="Kaydedilecek süre"
               hint={`Diskte ~${formatBytes(ringBytes)} yer tutar. 30 saniyelik adımlarla ayarlanır.`}
               control={
-                <div className="slider-row">
+                <div className="slider-row" style={{ width: 220 }}>
                   <Slider
                     label="Kaydedilecek süre"
                     min={REPLAY_MIN_SEC}
@@ -188,11 +182,10 @@ export function RecordingScreen({
                   }
                 />
                 <Setting
-                  stacked
-                  label={`Bitrate tavanı — ${(maxrate / 1000).toFixed(0)} Mbps`}
-                  hint="0 bırakılırsa ön ayardan gelir. Tampon boyutu bu tavana göre hesaplanır."
+                  label="Bitrate tavanı"
+                  hint="Ön ayardan gelir. Tampon boyutu bu tavana göre hesaplanır."
                   control={
-                    <div className="slider-row">
+                    <div className="slider-row" style={{ width: 220 }}>
                       <Slider
                         label="Bitrate tavanı"
                         min={5000}

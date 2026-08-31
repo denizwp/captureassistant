@@ -7,7 +7,6 @@ import type { DeepPartial } from '@shared/ipc'
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** Merges a patch into a base, keeping any key the patch does not mention. */
 function merge<T>(base: T, patch: DeepPartial<T> | undefined): T {
   if (!isPlainObject(patch)) return base
   const out = { ...base } as Record<string, unknown>
@@ -41,16 +40,13 @@ export class SettingsStore {
   private read(): Settings {
     try {
       const raw = JSON.parse(readFileSync(this.file, 'utf8')) as DeepPartial<Settings>
-      // Merge onto defaults so a settings file written by an older version
-      // picks up new keys instead of leaving them undefined.
+
       return merge(DEFAULT_SETTINGS, raw)
     } catch {
       return DEFAULT_SETTINGS
     }
   }
 
-  /** Write to a sibling temp file then rename, so a crash mid-write can't
-   *  leave a truncated settings file behind. */
   private write(): void {
     const tmp = `${this.file}.tmp`
     mkdirSync(dirname(this.file), { recursive: true })

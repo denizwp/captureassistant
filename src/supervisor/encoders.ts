@@ -5,9 +5,6 @@ import type { EncoderChoice } from './pipeline'
 
 const run = promisify(execFile)
 
-/** Preference order per codec. H.264 is the default because it is the one that
- *  plays everywhere and previews inline in Discord, which is what people
- *  actually do with a clip. */
 const CANDIDATES: Record<CodecId, string[]> = {
   h264: ['h264_nvenc', 'h264_amf', 'h264_qsv', 'libx264'],
   hevc: ['hevc_nvenc', 'hevc_amf', 'hevc_qsv', 'libx265'],
@@ -18,19 +15,10 @@ const SOFTWARE = new Set(['libx264', 'libx265'])
 
 export interface ProbeResult {
   encoder: EncoderChoice
-  /** Names that were compiled in but failed the smoke test, with the reason. */
+
   rejected: { id: string; reason: string }[]
 }
 
-/**
- * Two phases, because presence proves nothing.
- *
- * `-encoders` says the binary was built with NVENC; it does not say the driver
- * is new enough, that the GPU physically has that codec, that an NVENC session
- * is free, or that AMF's runtime DLL is installed. Only a real encode does.
- * The whole probe costs a few seconds and is cached by the caller — it must
- * never run on the path that arms the buffer.
- */
 export async function probeEncoder(ffmpeg: string, codec: CodecId): Promise<ProbeResult> {
   const listed = await listEncoders(ffmpeg)
   const rejected: { id: string; reason: string }[] = []
@@ -48,8 +36,6 @@ export async function probeEncoder(ffmpeg: string, codec: CodecId): Promise<Prob
     return { encoder: { id, hardware: !SOFTWARE.has(id) }, rejected }
   }
 
-  // libx264 is in every build; if even that failed something is very wrong,
-  // but returning it keeps the caller's contract simple.
   return { encoder: { id: 'libx264', hardware: false }, rejected }
 }
 
@@ -66,7 +52,6 @@ async function listEncoders(ffmpeg: string): Promise<Set<string>> {
   return names
 }
 
-/** Returns null on success, or a short reason. */
 async function smokeTest(ffmpeg: string, id: string): Promise<string | null> {
   const args = [
     '-hide_banner',
@@ -91,12 +76,6 @@ async function smokeTest(ffmpeg: string, id: string): Promise<string | null> {
   }
 }
 
-/**
- * Separate from the encoder probe on purpose: Desktop Duplication fails for
- * reasons that have nothing to do with encoding — the capture process sitting
- * on a different adapter than the one driving the display (common on hybrid
- * laptops), a session with no desktop, or a protected-content black frame.
- */
 export async function probeCapture(ffmpeg: string, outputIdx: number): Promise<string | null> {
   const args = [
     '-hide_banner',

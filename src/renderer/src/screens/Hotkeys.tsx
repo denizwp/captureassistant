@@ -15,7 +15,6 @@ const BINDINGS: { key: keyof HotkeySettings; label: string; hint?: string }[] = 
 
 const MODIFIER_KEYS = new Set(['Control', 'Alt', 'Shift', 'Meta'])
 
-/** Chromium key name -> the spelling Electron's accelerators use. */
 function toAccelerator(event: KeyboardEvent): string | null {
   if (MODIFIER_KEYS.has(event.key)) return null
 
@@ -43,8 +42,6 @@ function toAccelerator(event: KeyboardEvent): string | null {
 
   parts.push(named)
 
-  // A bare letter would swallow typing everywhere; require a modifier unless
-  // it is a function key, which games rarely bind.
   const isFunctionKey = /^F\d{1,2}$/.test(named)
   if (parts.length === 1 && !isFunctionKey) return null
 
@@ -89,8 +86,6 @@ export function HotkeysScreen({
     (key) => settings.hotkeys[key] === DEFAULT_SETTINGS.hotkeys[key]
   )
 
-  // Two bindings on the same combo would race; flag them rather than silently
-  // letting the last writer win.
   const counts = new Map<string, number>()
   for (const combo of Object.values(settings.hotkeys)) {
     counts.set(combo, (counts.get(combo) ?? 0) + 1)
