@@ -1,8 +1,10 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, session } from 'electron'
 import { join } from 'node:path'
 import { SettingsStore } from './store'
 import { createMainWindow } from './windows'
 import { registerIpc } from './ipc'
+import { AudioEngine } from './audio'
+import { runAudioSelfTest } from './audio-selftest'
 
 /**
  * Performance switches, applied before `app.whenReady()` because Chromium reads
@@ -33,14 +35,36 @@ if (!singleInstance) {
     }
   })
 
-  app.whenReady().then(() => {
+  const audio = new AudioEngine()
+
+  app.whenReady().then(async () => {
     app.setAppUserModelId('com.captureassistant.app')
-    registerIpc(store)
+
+    // The capture page needs the microphone; nothing else in the app asks for
+    // a permission, so anything other than `media` is denied outright.
+    session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+      callback(permission === 'media')
+    })
+
+    // `--audio-test` records ten seconds through the real audio path to a wav
+    // and exits. It is how the pipe, the worklet and the loopback handler get
+    // verified without driving the UI.
+    if (process.argv.includes('--audio-test')) {
+      await runAudioSelfTest(audio, store)
+      app.quit()
+      return
+    }
+
+    registerIpc(store, audio)
     createMainWindow(store)
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createMainWindow(store)
     })
+  })
+
+  app.on('before-quit', () => {
+    void audio.close()
   })
 
   // The tray keeps the buffer alive after the window closes, so on Windows we
