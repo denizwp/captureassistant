@@ -171,10 +171,12 @@ function Hud() {
 
         <button
           type="button"
-          className={`hud__toggle${state.micActive ? ' is-on' : ''}`}
+          className={`hud__toggle${settings.audio.micEnabled ? ' is-on' : ''}`}
           onClick={() => void api.toggleMic()}
         >
-          <i className={`ph ${state.micActive ? 'ph-microphone' : 'ph-microphone-slash'}`} />
+          <i
+            className={`ph ${settings.audio.micEnabled ? 'ph-microphone' : 'ph-microphone-slash'}`}
+          />
           <span>Mikrofon</span>
           <Keys combo={settings.hotkeys.toggleMic} />
         </button>
