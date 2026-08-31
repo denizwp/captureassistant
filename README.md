@@ -27,14 +27,15 @@ almanın ek bir maliyeti olmaz.
 
 ## Kurulum
 
-[Releases](https://github.com/denizwp/captureassistant/releases) sayfasından zip'i
-indir, bir klasöre çıkar, `Capture Assistant.exe`'yi çalıştır.
+[Releases](https://github.com/denizwp/captureassistant/releases) sayfasından
+`CaptureAssistant-<sürüm>.exe` dosyasını indir ve çalıştır. Hepsi bu.
 
 Installer yok — kayıt defterine yazmaz, Program Files'a kurulmaz, yönetici yetkisi
-istemez. Kaldırmak için klasörü silmen yeterli.
+istemez. Uygulama ilk açılışta kendini geçici bir klasöre açar, sonraki açılışlarda
+onu yeniden kullanır. Kaldırmak için exe'yi silmen yeterli.
 
-FFmpeg pakete dahil. İndirme boyutu bu yüzden ~220 MB, karşılığında hiçbir şey
-indirmeden çalışıyor.
+FFmpeg pakete dahil. Dosya bu yüzden ~150 MB, karşılığında hiçbir şey indirmeden
+çalışıyor.
 
 ## Kısayollar
 
@@ -98,7 +99,7 @@ kopyalanıyor. Kesim başta da sonda da tam oluyor ve işlem saniyeler sürüyor
 ```sh
 npm install     # ffmpeg'i resources/ffmpeg içine indirir
 npm run dev
-npm run dist    # release/Capture Assistant-<sürüm>-win-x64.zip
+npm run dist    # release/CaptureAssistant-<sürüm>.exe
 ```
 
 Bu hattın büyük kısmı bozulduğunda sessizce bozuluyor, o yüzden ayrı teşhis
