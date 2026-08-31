@@ -1,7 +1,11 @@
 import type { DeepPartial } from '@shared/ipc'
 import type { Settings } from '@shared/settings'
 import { Section, Setting, Slider, Switch } from '../components/controls'
+import { Select } from '../components/Select'
 import art from '../../assets/character-panel.png'
+
+/** Sentinel for the system default device. */
+const DEFAULT_MIC = '__default__'
 
 export function AudioScreen({
   settings,
@@ -68,15 +72,17 @@ export function AudioScreen({
               label="Cihaz"
               hint="Cihaz listesi kayıt motoru bağlandığında dolar."
               control={
-                <select
-                  className="input"
-                  style={{ width: 260 }}
-                  disabled={!audio.micEnabled}
-                  value={audio.micDeviceId ?? ''}
-                  onChange={(e) => patch({ audio: { micDeviceId: e.target.value || null } })}
-                >
-                  <option value="">Varsayılan mikrofon</option>
-                </select>
+                <div style={{ width: 260 }}>
+                  <Select
+                    label="Mikrofon cihazı"
+                    disabled={!audio.micEnabled}
+                    value={audio.micDeviceId ?? DEFAULT_MIC}
+                    onChange={(id) =>
+                      patch({ audio: { micDeviceId: id === DEFAULT_MIC ? null : id } })
+                    }
+                    options={[{ value: DEFAULT_MIC, label: 'Varsayılan mikrofon' }]}
+                  />
+                </div>
               }
             />
             <Setting

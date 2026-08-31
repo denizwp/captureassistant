@@ -5,6 +5,7 @@ import { REPLAY_MAX_SEC, REPLAY_MIN_SEC, REPLAY_STEP_SEC } from '@shared/setting
 import { api, type MonitorInfo } from '../api'
 import { estimateRingBytes, formatBytes, formatDuration } from '../format'
 import { Section, Segmented, Setting, Slider, Switch } from '../components/controls'
+import { Select } from '../components/Select'
 import art from '../../assets/character-panel.png'
 
 /** Worst-case ceilings the ring is sized against, matching the encoder args. */
@@ -13,6 +14,10 @@ const PRESET_MAXRATE_KBPS: Record<QualityPreset, number> = {
   balanced: 50_000,
   high: 90_000
 }
+
+/** Sentinel for "whatever Windows calls primary", since null is not a value
+ *  the listbox can carry. */
+const PRIMARY = '__primary__'
 
 const CODECS: { value: CodecId; label: string; hint: string }[] = [
   { value: 'h264', label: 'H.264', hint: 'Her yerde oynar' },
@@ -203,19 +208,20 @@ export function RecordingScreen({
             <Setting
               label="Ekran"
               control={
-                <select
-                  className="input"
-                  style={{ width: 260 }}
-                  value={capture.monitorId ?? ''}
-                  onChange={(e) => patch({ capture: { monitorId: e.target.value || null } })}
-                >
-                  <option value="">Birincil ekran</option>
-                  {monitors.map((monitor) => (
-                    <option key={monitor.id} value={monitor.id}>
-                      {monitor.label} — {monitor.width}×{monitor.height}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ width: 260 }}>
+                  <Select
+                    label="Ekran"
+                    value={capture.monitorId ?? PRIMARY}
+                    onChange={(id) => patch({ capture: { monitorId: id === PRIMARY ? null : id } })}
+                    options={[
+                      { value: PRIMARY, label: 'Birincil ekran' },
+                      ...monitors.map((monitor) => ({
+                        value: monitor.id,
+                        label: `${monitor.label} — ${monitor.width}×${monitor.height}`
+                      }))
+                    ]}
+                  />
+                </div>
               }
             />
             <Setting

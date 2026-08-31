@@ -215,7 +215,7 @@
 .toasts {
     position: fixed;
     right: var(--space-5);
-    bottom: calc(var(--statusbar-h) + var(--space-4));
+    bottom: var(--space-5);
     z-index: 200;
     display: grid;
     gap: var(--space-2);
@@ -428,3 +428,20 @@
     white-space: nowrap;
 }
 .brand__word em { font-style: normal; font-weight: var(--fw-normal); color: var(--text-subtle); }
+
+/* ── Select popup flip ──────────────────────────────────────────────── */
+/* The popup is absolutely positioned inside a scrolling pane; near the bottom
+   edge it opens upward instead of being clipped. */
+.select__popup--up {
+    top: auto;
+    bottom: calc(100% + var(--space-1));
+}
+
+/* ── Error badge ────────────────────────────────────────────────────── */
+/* The appbar badge doubles as the error surface now that the statusbar is
+   gone; a long ffmpeg message truncates rather than stretching the bar. */
+.badge--error { color: var(--text-danger); box-shadow: inset 0 0 0 1px var(--danger); }
+.badge--error,
+.badge--muted { max-width: 420px; overflow: hidden; }
+.badge--error > :not(.badge__dot) { overflow: hidden; text-overflow: ellipsis; }
+.badge__dot--danger { background: var(--danger); }
