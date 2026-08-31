@@ -109,11 +109,16 @@ export function AudioScreen({
           <Section title="Kanallar">
             <Setting
               label="Sesleri ayrı kanallara yaz"
-              hint="Karışık ses ilk kanalda kalır; sistem ve mikrofon ayrıca ikinci ve üçüncü kanala yazılır, böylece sonradan ayrı düzenlenebilir."
+              hint={
+                audio.micEnabled
+                  ? 'Karışık ses ilk kanalda kalır; sistem ve mikrofon ayrıca ikinci ve üçüncü kanala yazılır, böylece sonradan ayrı düzenlenebilir.'
+                  : 'Ayıracak ikinci bir kaynak yok — mikrofonu açtığında kullanılabilir.'
+              }
               control={
                 <Switch
                   label="Sesleri ayrı kanallara yaz"
-                  checked={audio.separateTracks}
+                  disabled={!audio.micEnabled}
+                  checked={audio.separateTracks && audio.micEnabled}
                   onChange={(separateTracks) => patch({ audio: { separateTracks } })}
                 />
               }
