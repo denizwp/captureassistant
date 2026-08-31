@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Clip } from '@shared/state'
 import { api } from '../api'
-import { formatBytes, formatDate } from '../format'
+import { formatBytes, formatClock, formatDate } from '../format'
 import art from '../../assets/character-panel.png'
 
 export function ClipsScreen() {
   const [clips, setClips] = useState<Clip[]>([])
   const [selected, setSelected] = useState<string | null>(null)
-  const [thumbs, setThumbs] = useState<Record<string, string>>({})
+  const [meta, setMeta] = useState<Record<string, { thumbnail: string | null; durationSec: number }>>({})
 
   const refresh = useCallback(() => {
     void api.listClips().then(setClips)
@@ -21,15 +21,15 @@ export function ClipsScreen() {
   useEffect(() => {
     let cancelled = false
     for (const clip of clips) {
-      if (thumbs[clip.id]) continue
-      void api.clipThumbnail(clip.path, clip.createdAt).then((url) => {
-        if (!cancelled && url) setThumbs((current) => ({ ...current, [clip.id]: url }))
+      if (meta[clip.id]) continue
+      void api.clipMeta(clip.path, clip.createdAt).then((info) => {
+        if (!cancelled) setMeta((current) => ({ ...current, [clip.id]: info }))
       })
     }
     return () => {
       cancelled = true
     }
-  }, [clips, thumbs])
+  }, [clips, meta])
 
   const active = clips.find((clip) => clip.id === selected) ?? null
 
@@ -103,15 +103,21 @@ export function ClipsScreen() {
                   onDoubleClick={() => void api.openClip(clip.path)}
                 >
                   <span className="clip__thumb">
-                    {thumbs[clip.id] ? (
-                      <img src={thumbs[clip.id]} alt="" loading="lazy" />
+                    {meta[clip.id]?.thumbnail ? (
+                      <img src={meta[clip.id]?.thumbnail ?? ''} alt="" loading="lazy" />
                     ) : (
                       <i className="ph ph-film-slate clip__placeholder" />
                     )}
+                    {meta[clip.id]?.durationSec ? (
+                      <span className="clip__duration">
+                        {formatClock(meta[clip.id]?.durationSec ?? 0)}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="clip__name">{clip.name}</span>
                   <span className="clip__meta">
-                    {formatDate(clip.createdAt)} · {formatBytes(clip.sizeBytes)}
+                    {formatDate(clip.createdAt)} · {formatClock(meta[clip.id]?.durationSec ?? 0)} ·{' '}
+                    {formatBytes(clip.sizeBytes)}
                   </span>
                 </button>
               ))}

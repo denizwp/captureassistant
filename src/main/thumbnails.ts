@@ -44,3 +44,31 @@ export async function thumbnailFor(clipPath: string, mtimeMs: number): Promise<s
   const written = await stat(out).catch(() => null)
   return written && written.size > 0 ? out : null
 }
+
+const durations = new Map<string, number>()
+
+export async function durationFor(clipPath: string, mtimeMs: number): Promise<number> {
+  const key = `${clipPath}:${mtimeMs}`
+  const cached = durations.get(key)
+  if (cached !== undefined) return cached
+
+  const probe = ffmpegPath().replace(/ffmpeg\.exe$/i, 'ffprobe.exe')
+  try {
+    const { stdout } = await run(
+      probe,
+      [
+        '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=nw=1:nk=1',
+        clipPath
+      ],
+      { timeout: 10_000 }
+    )
+    const seconds = Number.parseFloat(stdout.trim())
+    const value = Number.isFinite(seconds) ? seconds : 0
+    durations.set(key, value)
+    return value
+  } catch {
+    return 0
+  }
+}

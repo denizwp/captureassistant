@@ -16,7 +16,10 @@ interface CaptureApi {
   listMonitors(): Promise<MonitorInfo[]>
   chooseDirectory(current: string | null): Promise<string | null>
   listClips(): Promise<Clip[]>
-  clipThumbnail(path: string, mtimeMs: number): Promise<string | null>
+  clipMeta(
+    path: string,
+    mtimeMs: number
+  ): Promise<{ thumbnail: string | null; durationSec: number }>
   revealClip(path: string): Promise<void>
   openClip(path: string): Promise<void>
   deleteClip(path: string): Promise<void>

@@ -12,8 +12,7 @@ const api = {
   chooseDirectory: (current: string | null) =>
     ipcRenderer.invoke('dialog:choose-directory', current),
   listClips: () => ipcRenderer.invoke('clips:list'),
-  clipThumbnail: (path: string, mtimeMs: number) =>
-    ipcRenderer.invoke('clips:thumbnail', path, mtimeMs),
+  clipMeta: (path: string, mtimeMs: number) => ipcRenderer.invoke('clips:meta', path, mtimeMs),
   revealClip: (path: string) => ipcRenderer.invoke('clips:reveal', path),
   openClip: (path: string) => ipcRenderer.invoke('clips:open', path),
   deleteClip: (path: string) => ipcRenderer.invoke('clips:delete', path),

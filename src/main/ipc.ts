@@ -7,7 +7,7 @@ import type { Clip } from '@shared/state'
 import type { SettingsStore } from './store'
 import type { AudioEngine } from './audio'
 import type { SupervisorHost } from './supervisor'
-import { thumbnailFor } from './thumbnails'
+import { durationFor, thumbnailFor } from './thumbnails'
 
 export function registerIpc(
   store: SettingsStore,
@@ -79,9 +79,15 @@ export function registerIpc(
 
   ipcMain.handle('clips:list', () => listClips(outputDir()))
 
-  ipcMain.handle('clips:thumbnail', async (_e, path: string, mtimeMs: number) => {
-    const thumb = await thumbnailFor(path, mtimeMs)
-    return thumb ? `file://${thumb.replace(/\\/g, '/')}` : null
+  ipcMain.handle('clips:meta', async (_e, path: string, mtimeMs: number) => {
+    const [thumb, durationSec] = await Promise.all([
+      thumbnailFor(path, mtimeMs),
+      durationFor(path, mtimeMs)
+    ])
+    return {
+      thumbnail: thumb ? `file://${thumb.replace(/\\/g, '/')}` : null,
+      durationSec
+    }
   })
 
   ipcMain.handle('clips:reveal', (_e, path: string) => shell.showItemInFolder(path))
@@ -129,7 +135,6 @@ async function listClips(dir: string): Promise<Clip[]> {
       id: path,
       path,
       name: basename(entry.name, extname(entry.name)),
-
       durationSec: 0,
       sizeBytes: info.size,
       createdAt: info.mtimeMs,
