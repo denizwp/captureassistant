@@ -60,6 +60,9 @@ export class Ring {
   private lastBytes = 0
   private lastBytesAt = Date.now()
   private bytesPerSec = 0
+  /** Monotonic: every segment counted once, never decremented by pruning. */
+  private writtenBytes = 0
+  private bytesOnDisk = 0
 
   constructor(private readonly dir: string) {}
 
@@ -159,20 +162,26 @@ export class Ring {
         segment.bytes = await stat(segment.file)
           .then((s) => s.size)
           .catch(() => 0)
+        // Counted once, when first seen. Deriving the rate from what is
+        // currently on disk instead would read as zero every time the janitor
+        // prunes, and the readout would flicker between a real number and
+        // nothing.
+        this.writtenBytes += segment.bytes
       }
       total += segment.bytes
     }
+    this.bytesOnDisk = total
 
     const now = Date.now()
     const elapsed = (now - this.lastBytesAt) / 1000
-    if (elapsed >= 1 && this.lastBytes > 0) {
-      // Only counts growth, so pruning does not read as a negative write rate.
-      this.bytesPerSec = Math.max(0, (total - this.lastBytes) / elapsed)
-    }
-    if (elapsed >= 1) {
-      this.lastBytes = total
-      this.lastBytesAt = now
-    }
+    if (elapsed < 2) return
+
+    const rate = (this.writtenBytes - this.lastBytes) / elapsed
+    // Segments only land every couple of seconds, so the raw figure is bursty.
+    // Smooth it rather than showing a number that jumps around.
+    this.bytesPerSec = this.bytesPerSec > 0 ? this.bytesPerSec * 0.6 + rate * 0.4 : rate
+    this.lastBytes = this.writtenBytes
+    this.lastBytesAt = now
   }
 
   pin(lo: number, hi: number | null, owner: string): void {
@@ -223,7 +232,7 @@ export class Ring {
   }
 
   async stats(): Promise<RingStats> {
-    const bytesOnDisk = this.segments.reduce((sum, s) => sum + s.bytes, 0)
+    const bytesOnDisk = this.bytesOnDisk
     const free = await statfs(this.dir)
       .then((s) => s.bavail * s.bsize)
       .catch(() => 0)
@@ -284,6 +293,10 @@ export class Ring {
     this.csvOffset = 0
     this.carry = ''
     this.runId = 0
+    this.writtenBytes = 0
+    this.bytesOnDisk = 0
+    this.lastBytes = 0
+    this.bytesPerSec = 0
 
     await unlinkPatiently(this.indexPath)
     await unlinkPatiently(join(this.dir, 'runs.json'))
@@ -316,4 +329,43 @@ async function unlinkPatiently(path: string, attempts = 10): Promise<void> {
   }
   // Still locked after half a second: leave it. A stale index is recoverable
   // (the tailer starts from offset zero anyway); failing the arm is not.
+}
+
+/**
+ * Deletes segments left behind by a process that did not shut down cleanly.
+ *
+ * Anything in the ring directory at startup is orphaned by definition: the
+ * supervisor starts idle, and segments only ever belong to a live encoder. If
+ * this only ran when arming, a user who was killed mid-recording and never
+ * armed again would keep gigabytes of temporary files forever.
+ */
+export async function sweepOrphans(dir: string): Promise<{ files: number; bytes: number }> {
+  const names = await readdir(dir).catch(() => [] as string[])
+  let files = 0
+  let bytes = 0
+
+  for (const name of names) {
+    if (!/^seg_\d+\.ts$/.test(name) && name !== 'index.csv' && name !== 'runs.json') continue
+    const path = join(dir, name)
+    const size = await stat(path)
+      .then((s) => s.size)
+      .catch(() => 0)
+    await rm(path, { force: true }).catch(() => undefined)
+    files += 1
+    bytes += size
+  }
+
+  // Head segments from an assembly that was interrupted.
+  const work = join(dir, 'work')
+  const stale = await readdir(work).catch(() => [] as string[])
+  for (const name of stale) {
+    const path = join(work, name)
+    bytes += await stat(path)
+      .then((s) => s.size)
+      .catch(() => 0)
+    await rm(path, { force: true }).catch(() => undefined)
+    files += 1
+  }
+
+  return { files, bytes }
 }
