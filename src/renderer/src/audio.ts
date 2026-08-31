@@ -16,6 +16,7 @@ declare global {
         running: boolean
         error?: string
         devices?: MicDevice[]
+        latencySec?: number
         diagnostics?: Record<string, unknown>
       }): void
       on(listener: (payload: unknown) => void): () => void
@@ -29,6 +30,7 @@ interface MicDevice {
 }
 
 const SAMPLE_RATE = 48_000
+const BLOCK_FRAMES = 960
 
 async function captureLoopback(): Promise<MediaStream> {
   const audio: MediaTrackConstraints = {
@@ -42,6 +44,19 @@ async function captureLoopback(): Promise<MediaStream> {
   } catch {
     return await navigator.mediaDevices.getDisplayMedia({ audio, video: true })
   }
+}
+
+/*
+ * Samples reach ffmpeg later than the frames they belong to: the loopback device
+ * buffers, the context buffers again, and the worklet only hands over whole
+ * blocks. ffmpeg stamps them on arrival, so without telling it about this the
+ * sound ends up sitting behind the picture.
+ */
+function captureLatency(ctx: AudioContext): number {
+  const [track] = systemStream?.getAudioTracks() ?? []
+  const settings = track?.getSettings() as (MediaTrackSettings & { latency?: number }) | undefined
+  const device = settings?.latency ?? 0
+  return device + ctx.baseLatency + BLOCK_FRAMES / SAMPLE_RATE
 }
 
 function stereoGain(ctx: AudioContext, value: number): GainNode {
@@ -114,7 +129,7 @@ function setMetering(enabled: boolean): void {
 async function start(config: AudioConfig): Promise<void> {
   await stop()
 
-  const ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'playback' })
+  const ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' })
   context = ctx
 
   await ctx.audioWorklet.addModule(new URL('./pcm-worklet.js', import.meta.url).href)
@@ -155,6 +170,7 @@ async function start(config: AudioConfig): Promise<void> {
   await ctx.resume()
   window.audioBridge.status({
     running: true,
+    latencySec: captureLatency(ctx),
     devices: await listMics(),
     diagnostics: {
       contextRate: ctx.sampleRate,

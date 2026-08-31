@@ -102,6 +102,23 @@ export function AudioScreen({
               }
             />
             <Setting
+              label="Ses gecikmesi"
+              hint="Kayıtta ses görüntüden geride kalıyorsa artır, öndeyse azalt."
+              control={
+                <div className="slider-row" style={{ width: 220 }}>
+                  <Slider
+                    label="Ses gecikmesi"
+                    min={0}
+                    max={500}
+                    step={10}
+                    value={audio.syncOffsetMs}
+                    onChange={(syncOffsetMs) => patch({ audio: { syncOffsetMs } })}
+                  />
+                  <span className="slider-row__value mono">{audio.syncOffsetMs}ms</span>
+                </div>
+              }
+            />
+            <Setting
               stacked
               label="Hangi uygulamaların sesi kaydedilsin"
               hint={

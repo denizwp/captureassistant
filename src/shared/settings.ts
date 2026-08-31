@@ -31,6 +31,13 @@ export interface AudioSettings {
    * everything, which is also the cheapest path.
    */
   mutedApps: string[]
+
+  /*
+   * Chromium buffers the loopback well beyond the latency it reports, so the
+   * measured figure alone leaves the sound behind the picture. Measured at about
+   * 200ms here; it is a setting because there is no way to read it back.
+   */
+  syncOffsetMs: number
   micEnabled: boolean
 
   micDeviceId: string | null
@@ -95,6 +102,7 @@ export const DEFAULT_SETTINGS: Settings = {
     systemEnabled: true,
     systemGain: 1,
     mutedApps: [],
+    syncOffsetMs: 120,
     micEnabled: false,
     micDeviceId: null,
     micGain: 1
