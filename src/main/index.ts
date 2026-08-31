@@ -8,6 +8,7 @@ import { SupervisorHost } from './supervisor'
 import { TrayController } from './tray'
 import { HotkeyManager } from './hotkeys'
 import { Overlay } from './overlay'
+import { warnIfHotkeysBlocked } from './elevation'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
 
@@ -46,7 +47,6 @@ if (!singleInstance) {
       return
     }
 
-    store.update({ replay: { enabled: false } })
     supervisor.start(store.get())
 
     const startHidden = process.argv.includes('--hidden')
@@ -104,7 +104,14 @@ if (!singleInstance) {
 
     const overlay = new Overlay()
     overlay.create(store.get().app)
-    supervisor.on('state', (state) => overlay.update(state, store.get().app))
+    supervisor.on('state', (state) => {
+      overlay.update(state, store.get().app)
+      if (state.state === 'recording' || state.state === 'armed') {
+        void warnIfHotkeysBlocked((message) =>
+          broadcast('toast', { kind: 'warning', message })
+        )
+      }
+    })
 
     const hotkeys = new HotkeyManager()
     hotkeys.on('trigger', (action: string) => {
@@ -141,6 +148,11 @@ if (!singleInstance) {
       broadcast('toast', { kind: 'warning', message })
     })
     hotkeys.start(store.get().hotkeys)
+
+    // The buffer setting is restored rather than cleared: if it was on when the
+    // app last closed, arm it again. That is what makes "start with Windows"
+    // plus an armed buffer actually mean the buffer is running after a reboot.
+    if (store.get().replay.enabled) actions.toggleReplay(true)
 
     registerIpc(store, audio, supervisor, () => {
       tray.refresh()

@@ -9,9 +9,13 @@ interface OverlayState {
 
 declare global {
   interface Window {
-    overlay: { on(listener: (payload: unknown) => void): () => void }
+    overlay: {
+      on(listener: (payload: unknown) => void): () => void
+    }
   }
 }
+
+
 
 const rec = document.getElementById('rec')
 const replay = document.getElementById('replay')
