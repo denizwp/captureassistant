@@ -11,6 +11,7 @@ import { Overlay } from './overlay'
 import { warnIfHotkeysBlocked } from './elevation'
 import { warnIfHdr } from './hdr'
 import { pruneThumbnails } from './thumbnails'
+import { AppAudioCapture } from './app-audio'
 import { checkForUpdate, discardOldBuild, runUpdateSelfTest } from './updater'
 import { Hud } from './hud'
 import { runAudioSelfTest } from './audio-selftest'
@@ -68,16 +69,36 @@ if (!singleInstance) {
       window.focus()
     }
 
+    const appAudio = new AppAudioCapture()
+
+    const startAudio = async (): Promise<void> => {
+      const config = store.get().audio
+      await audio.start(config)
+      const active = await appAudio.start(
+        config.systemMode,
+        config.systemApp,
+        (chunk) => audio.pushAppAudio(chunk),
+        (message) => broadcast('toast', { kind: 'warning', message })
+      )
+      audio.useAppAudio(active)
+    }
+
+    const stopAudio = (): void => {
+      appAudio.stop()
+      audio.useAppAudio(false)
+      audio.stop()
+    }
+
     const actions = {
       toggleReplay: async (enabled: boolean) => {
-        if (enabled) await audio.start(store.get().audio)
-        else audio.stop()
+        if (enabled) await startAudio()
+        else stopAudio()
         store.update({ replay: { enabled } })
         supervisor.arm(enabled)
       },
       toggleRecording: async () => {
         const recording = supervisor.getState().state === 'recording'
-        if (!recording) await audio.start(store.get().audio)
+        if (!recording) await startAudio()
         supervisor.record(!recording)
       },
       saveReplay: () => supervisor.saveReplay(),
@@ -135,7 +156,7 @@ if (!singleInstance) {
           void actions.toggleRecording()
           break
         case 'toggleReplayBuffer':
-          void actions.toggleReplay(supervisor.getState().state === 'idle')
+          void actions.toggleReplay(!store.get().replay.enabled)
           break
         case 'toggleMic':
           actions.toggleMic()

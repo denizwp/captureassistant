@@ -39,6 +39,7 @@ let ffmpegPath = ''
 let ringDir = ''
 let outDir = ''
 let audioPipe = ''
+let audioDisabled = false
 let outputIdx = 0
 let adapterIdx = 0
 let ring: Ring | null = null
@@ -108,8 +109,7 @@ async function startEncoder(): Promise<void> {
     startNumber: ring.nextSegmentNumber,
     drawMouse: true,
 
-    audioPipe,
-    separateTracks: settings.audio.separateTracks
+    audioPipe: audioDisabled ? null : audioPipe
   })
 
   ring.beginRun({
@@ -199,11 +199,39 @@ function fail(message: string): void {
   }, 6000)
 }
 
+const STALL_SEC = 10
+
+/*
+ * ffmpeg reads the audio pipe as an input, so if nothing ever writes to it the
+ * whole graph waits forever: no segments, no error, no exit. That looks exactly
+ * like a working buffer that never fills, so treat a silent ring as a broken
+ * audio source and come back without it rather than sit there.
+ */
+async function watchForStall(): Promise<void> {
+  if (!ring || !child || startedAt === 0) return
+  if (ring.newestEnd > 0) return
+  if ((Date.now() - startedAt) / 1000 < STALL_SEC) return
+
+  if (!audioDisabled) {
+    audioDisabled = true
+    log('no segments and no audio arriving, restarting without sound', 'warning')
+    toast('warning', 'Ses yakalanamadı — görüntü sessiz kaydediliyor.')
+    await stopEncoder()
+    await startEncoder()
+    return
+  }
+
+  log('encoder produced nothing, giving up', 'error')
+  toast('error', 'Ekran kaydı başlatılamadı.')
+  await setArmed(false)
+}
+
 async function tick(): Promise<void> {
   if (!ring || !settings || state === 'idle') return
 
   await ring.poll()
   await ring.measure()
+  await watchForStall()
 
   const keep = settings.replay.enabled
     ? settings.replay.durationSec + settings.replay.postRollSec
@@ -273,6 +301,7 @@ async function setArmed(enabled: boolean): Promise<void> {
     state = 'armed'
     lastError = null
     consecutiveFailures = 0
+    audioDisabled = false
     await startEncoder()
   } else {
     if (state === 'recording') await stopRecording()
@@ -345,7 +374,7 @@ async function waitForSegment(target: number): Promise<void> {
 }
 
 async function saveReplay(): Promise<void> {
-  if (!ring || !settings || state === 'idle') {
+  if (!settings?.replay.enabled || !ring || state === 'idle') {
     toast('warning', 'Geçmiş kayıt açık değil.')
     return
   }

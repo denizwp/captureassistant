@@ -79,11 +79,13 @@ export async function runCaptureSelfTest(
   log(`output: ${outDir}`)
 
   supervisor.start(settings)
-  await audio.start(settings.audio)
+  const starveAudio = process.argv.includes('--starve-audio')
+  if (starveAudio) log('DELIBERATELY not starting audio, expecting a silent fallback')
+  else await audio.start(settings.audio)
   log('arming')
   supervisor.arm(true)
 
-  await wait(14_000)
+  await wait(starveAudio ? 26_000 : 14_000)
   if (!last || (last as SupervisorState).state !== 'armed') {
     log(`FAILED: never reached armed (${(last as SupervisorState | null)?.state ?? 'no state'})`)
     return
