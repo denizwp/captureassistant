@@ -101,6 +101,7 @@ function splitToMerger(
 }
 
 let context: AudioContext | null = null
+let merger: ChannelMergerNode | null = null
 let systemStream: MediaStream | null = null
 let micStream: MediaStream | null = null
 let systemGain: GainNode | null = null
@@ -117,7 +118,7 @@ async function start(config: AudioConfig): Promise<void> {
   await ctx.audioWorklet.addModule(new URL('./pcm-worklet.js', import.meta.url).href)
 
   // Four discrete channels: system L/R then mic L/R.
-  const merger = ctx.createChannelMerger(4)
+  merger = ctx.createChannelMerger(4)
 
   if (config.systemEnabled) {
     systemStream = await captureLoopback()
@@ -130,21 +131,7 @@ async function start(config: AudioConfig): Promise<void> {
     splitToMerger(ctx, systemGain, merger, 0)
   }
 
-  if (config.micEnabled) {
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        ...(config.micDeviceId ? { deviceId: { exact: config.micDeviceId } } : {}),
-        // We are recording, not making a call — leave the signal alone.
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false
-      }
-    })
-    const source = ctx.createMediaStreamSource(micStream)
-    micGain = stereoGain(ctx, config.micGain)
-    source.connect(micGain)
-    splitToMerger(ctx, micGain, merger, 2)
-  }
+  if (config.micEnabled) await attachMic(config.micDeviceId, config.micGain)
 
   const pump = new AudioWorkletNode(ctx, 'pcm-pump', {
     numberOfInputs: 1,
@@ -186,6 +173,7 @@ async function stop(): Promise<void> {
   micStream = null
   systemGain = null
   micGain = null
+  merger = null
 
   if (context) {
     await context.close()
@@ -193,8 +181,46 @@ async function stop(): Promise<void> {
   }
 }
 
+/**
+ * Adds the microphone to a graph that is already running.
+ *
+ * Turning the mic on used to be a gain change, which did nothing when the mic
+ * had been off at arm time: there was no source in the graph to raise. Web
+ * Audio lets a new source be connected to a live merger, so the branch is built
+ * on demand — no new AudioContext, no gap in the PCM stream, and therefore no
+ * drift against the video.
+ */
+async function attachMic(deviceId: string | null, gain: number): Promise<void> {
+  const ctx = context
+  if (!ctx || !merger || micStream) return
+
+  micStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+      // We are recording, not making a call — leave the signal alone.
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false
+    }
+  })
+
+  const source = ctx.createMediaStreamSource(micStream)
+  micGain = stereoGain(ctx, gain)
+  source.connect(micGain)
+  splitToMerger(ctx, micGain, merger, 2)
+}
+
+/** Releases the device so Windows drops its microphone-in-use indicator.
+ *  Channels 3 and 4 then carry silence, which keeps the stream continuous. */
+function detachMic(): void {
+  micStream?.getTracks().forEach((track) => track.stop())
+  micStream = null
+  micGain?.disconnect()
+  micGain = null
+}
+
 /** Applied live — toggling the mic mid-recording must not restart ffmpeg, or
- *  the ring breaks. The track keeps running and simply goes silent. */
+ *  the ring breaks. */
 function setGains(config: Pick<AudioConfig, 'systemGain' | 'micGain'>): void {
   if (systemGain) systemGain.gain.value = config.systemGain
   if (micGain) micGain.gain.value = config.micGain
@@ -220,6 +246,7 @@ window.audioBridge.on((payload) => {
     | { type: 'start'; config: AudioConfig }
     | { type: 'stop' }
     | { type: 'gains'; config: Pick<AudioConfig, 'systemGain' | 'micGain'> }
+    | { type: 'mic'; enabled: boolean; deviceId: string | null; gain: number }
     | { type: 'devices' }
 
   switch (message.type) {
@@ -233,6 +260,15 @@ window.audioBridge.on((payload) => {
       break
     case 'gains':
       setGains(message.config)
+      break
+    case 'mic':
+      if (message.enabled) {
+        attachMic(message.deviceId, message.gain).catch((error: unknown) => {
+          window.audioBridge.status({ running: true, error: String(error) })
+        })
+      } else {
+        detachMic()
+      }
       break
     case 'devices':
       void listMics().then((devices) => window.audioBridge.status({ running: !!context, devices }))

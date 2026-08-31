@@ -14,7 +14,7 @@ import type { CaptureState, SupervisorState } from '@shared/state'
 import { assemble } from './assembler'
 import { probeCapture, probeEncoder } from './encoders'
 import { buildRingArgs, PRESET_MAXRATE_KBPS, SEGMENT_SEC, type EncoderChoice } from './pipeline'
-import { Ring } from './ring'
+import { Ring, sweepOrphans } from './ring'
 
 interface InitMessage {
   type: 'init'
@@ -121,10 +121,12 @@ async function startEncoder(): Promise<void> {
     startNumber: ring.nextSegmentNumber,
     drawMouse: true,
     // The pipe always carries four channels; a disabled source is silence, not
-    // a missing channel, so the graph stays identical either way.
-    audioPipe:
-      settings.audio.systemEnabled || settings.audio.micEnabled ? audioPipe : null,
-    separateTracks: settings.audio.separateTracks && settings.audio.micEnabled
+    // a missing channel, so the graph stays identical either way. That matters:
+    // the graph is fixed when the encoder starts, and the mic can be toggled
+    // long after. Making the track layout depend on the mic being on right now
+    // meant enabling it later had nowhere to go.
+    audioPipe,
+    separateTracks: settings.audio.separateTracks
   })
 
   ring.beginRun({
@@ -210,11 +212,25 @@ async function stopEncoder(): Promise<void> {
   stopping = false
 }
 
+let errorTimer: NodeJS.Timeout | null = null
+
+/**
+ * The toast carries the message; the badge only needs to flag that something
+ * went wrong. Leaving the error pinned there forever reads as a stuck app long
+ * after the problem has passed, so it clears itself.
+ */
 function fail(message: string): void {
   lastError = message
   log(message, 'error')
   toast('error', message)
   void publish()
+
+  if (errorTimer) clearTimeout(errorTimer)
+  errorTimer = setTimeout(() => {
+    errorTimer = null
+    lastError = null
+    void publish()
+  }, 6000)
 }
 
 /* ── ticks ──────────────────────────────────────────────────────────── */
@@ -439,6 +455,19 @@ async function handle(message: Incoming): Promise<void> {
       outDir = message.outDir
       audioPipe = message.audioPipe
       settings = message.settings
+
+      // Whatever is in the ring directory now belongs to a process that is no
+      // longer running — a crash, a task-manager kill, a power cut.
+      await mkdir(ringDir, { recursive: true })
+      const swept = await sweepOrphans(ringDir)
+      if (swept.files > 0) {
+        log(
+          `cleared ${swept.files} orphaned file(s), ` +
+            `${(swept.bytes / 1024 ** 2).toFixed(1)}MB reclaimed`,
+          'warning'
+        )
+      }
+
       setInterval(() => void tick().catch(() => undefined), 1000)
       log('supervisor ready')
       await publish()
@@ -449,6 +478,9 @@ async function handle(message: Incoming): Promise<void> {
       settings = message.settings
       // Changing the codec invalidates the probed encoder.
       if (previous && previous.capture.codec !== settings.capture.codec) encoder = null
+      // Mic state is part of what we publish, so republish rather than making
+      // the badge wait for the next tick.
+      await publish()
       break
     }
 
