@@ -1,171 +1,147 @@
 <div align="center">
 
-<img src="src/renderer/assets/logo.png" width="96" alt="Capture Assistant">
+<img src="src/renderer/assets/logo.png" width="88" alt="">
 
 # Capture Assistant
 
-**Oyun oynarken çalışan, geçmişe dönük ekran kaydedici.**
-Bir kısayola bas, son 5 dakika klip olarak diske düşsün.
+Windows için geçmiş kayıt tamponu olan ekran kaydedici.
 
-<img src="https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D4?logo=windows&logoColor=white">
-<img src="https://img.shields.io/badge/Encoder-NVENC%20%7C%20AMF%20%7C%20QSV-76B900?logo=nvidia&logoColor=white">
-<img src="https://img.shields.io/badge/Capture-Desktop%20Duplication-1f6feb">
+<img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white">
+<img src="https://img.shields.io/badge/NVENC%20%C2%B7%20AMF%20%C2%B7%20QSV-76B900">
 <img src="https://img.shields.io/badge/Electron-34-47848F?logo=electron&logoColor=white">
 <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white">
-<img src="https://img.shields.io/badge/Kurulum-gerekmiyor-2ea043">
+<img src="https://img.shields.io/badge/lisans-MIT-2ea043">
 
 </div>
 
----
+## Ne işe yarıyor
 
-## Ne yapıyor
+Arka planda sürekli son birkaç dakikayı tutar, diske ise yalnızca senin
+istediğinde yazar. `Alt+F10`'a bastığında **geçmiş** N dakika klip olarak
+kaydedilir — kaydı önceden başlatmış olman gerekmez.
 
-Oyun oynarken arka planda sürekli kaydeder ama diske sadece senin istediğin anı
-yazar. Güzel bir şey olduğunda `Alt+F10`'a basarsın, **son N dakika** klip olarak
-kaydedilir. Kaçırdığın için üzülmene gerek kalmaz.
+Yanında düz kayıt de var: `Alt+F9` ile başlat, tekrar basıp bitir.
 
-| | |
-|---|---|
-| 🎬 **Manuel kayıt** | `Alt+F9` ile başlat / durdur. |
-| ⏪ **Geçmiş kayıt** | 1-20 dakikalık tampon, 30 saniyelik adımlarla. `Alt+F10` ile kaydet. |
-| ⚡ **Oyunu kastırmaz** | Desktop Duplication'dan doğrudan GPU encoder'a. Kareler sistem belleğine hiç inmez. |
-| 🔊 **Sistem sesi + mikrofon** | Karışık ses ilk kanalda; sistem ve mikrofon ayrıca kendi kanallarında. |
-| 🪟 **Tepside yaşar** | Pencereyi kapat, tampon çalışmaya devam etsin. |
-| 🟢 **Köşe rozetleri** | Kayıt, tampon ve mikrofon durumu bir bakışta. |
-
-Tampon ve manuel kayıt **aynı encoder'ı paylaşır** — yani tampon açıkken kayıt
-almak ekstra hiçbir maliyet getirmez.
-
----
+Tampon ve manuel kayıt aynı encoder üzerinden çalışır. Yani tampon açıkken kayıt
+almanın ek bir maliyeti yok.
 
 ## Kurulum
 
-1. [**Releases**](https://github.com/denizwp/captureassistant/releases) sayfasından zip'i indir
-2. İstediğin klasöre çıkar
-3. `Capture Assistant.exe`
+[Releases](https://github.com/denizwp/captureassistant/releases) sayfasından zip'i
+indir, bir klasöre çıkar, `Capture Assistant.exe`'yi çalıştır.
 
-Installer yok. Kayıt defterine dokunmaz, Program Files'a yazmaz, yönetici yetkisi
-istemez. Silmek istersen klasörü sil.
+Installer yok — kayıt defterine yazmaz, Program Files'a kurulmaz, yönetici yetkisi
+istemez. Kaldırmak için klasörü silmen yeterli.
 
-> FFmpeg paketin içinde geliyor. İndirme boyutu bu yüzden büyük, karşılığında
-> uygulama tamamen çevrimdışı çalışıyor.
-
----
+FFmpeg pakete dahil. İndirme boyutu bu yüzden ~220 MB, karşılığında hiçbir şey
+indirmeden çalışıyor.
 
 ## Kısayollar
 
-| Kısayol | İşlev |
+| | |
 |:--|:--|
-| <kbd>Alt</kbd> + <kbd>F9</kbd> | Kaydı başlat / durdur |
-| <kbd>Alt</kbd> + <kbd>F10</kbd> | Geçmiş kaydı kaydet |
-| <kbd>Alt</kbd> + <kbd>F8</kbd> | Tamponu aç / kapat |
-| <kbd>Alt</kbd> + <kbd>M</kbd> | Mikrofonu aç / kapat |
-| <kbd>Alt</kbd> + <kbd>F7</kbd> | Rozetleri göster / gizle |
+| <kbd>Alt</kbd>+<kbd>F9</kbd> | Kaydı başlat / durdur |
+| <kbd>Alt</kbd>+<kbd>F10</kbd> | Geçmiş kaydı kaydet |
+| <kbd>Alt</kbd>+<kbd>F8</kbd> | Tamponu aç / kapat |
+| <kbd>Alt</kbd>+<kbd>M</kbd> | Mikrofonu aç / kapat |
+| <kbd>Alt</kbd>+<kbd>Z</kbd> | Oyun içi paneli aç |
+| <kbd>Alt</kbd>+<kbd>F7</kbd> | Rozetleri göster / gizle |
 
-Hepsi ayarlardan değiştirilebilir. Oyun tam ekrandayken de çalışırlar.
+Ayarlardan değiştirilebilir, varsayılana döndürme düğmesi var.
 
-<details>
-<summary><b>Kısayollar oyunda çalışmıyorsa</b></summary>
+Kısayollar iki ayrı yoldan dinleniyor: düşük seviyeli bir klavye hook'u ve
+Windows'un kendi kısayol kaydı. Hook tuşu yutmuyor, yani oyunun girdisine
+karışmıyor. Oyun yönetici olarak çalışıp uygulama çalışmıyorsa Windows tuşları
+iletmeyebilir; uygulama bunu fark ettiğinde uyarıyor.
 
-Oyun yönetici olarak çalışıp Capture Assistant çalışmıyorsa Windows tuşları
-uygulamaya iletmez. Bu durumu fark ettiğinde uygulama sana söyler; çözüm
-Capture Assistant'ı da yönetici olarak açmak.
+## Ayarlar
 
-Kısayollar iki ayrı yoldan dinlenir: düşük seviyeli klavye hook'u (tuşu yutmaz,
-oyunun girdisine dokunmaz) ve Windows'un kendi kısayol kaydı. Biri çalışmazsa
-diğeri devreye girer.
+Süre 1-20 dakika arasında, 30 saniyelik adımlarla. Kalite üç ön ayar
+(Düşük / Dengeli / Yüksek) ve altında FPS, bitrate ve codec'i elle ayarlayabildiğin
+bir bölüm.
 
-</details>
+Ses tarafında sistem sesi ve mikrofon ayrı ayrı açılıp kapatılıyor, seviyeleri
+ayrı. Klipte üç ses kanalı oluyor: karışık, yalnızca sistem, yalnızca mikrofon.
+Böylece sonradan düzenlerken mikrofonu ayrı kısabiliyorsun.
 
----
+Kayıt ve tampon klasörleri değiştirilebilir. Tampon boyutu slider'ı sürüklerken
+canlı gösteriliyor; disk dolmaya başlarsa uygulama tamponu kendisi durduruyor.
 
 ## Gereksinimler
 
-| | |
-|---|---|
-| **İşletim sistemi** | Windows 10 sürüm 2004 veya üstü |
-| **Ekran kartı** | NVENC (GTX 900+), AMF (RX 400+) veya Intel Quick Sync |
-| **Disk** | 1080p60'ta 20 dakikalık tampon için ~21 GB boş alan |
+- Windows 10 sürüm 2004 veya üstü.
+- Donanım encoder'ı olan bir ekran kartı: NVENC (GTX 900+), AMF (RX 400+) veya
+  Intel Quick Sync. Uygulama açılışta hangisinin gerçekten çalıştığını deneyerek
+  seçiyor.
+- Tampon için disk alanı. 1080p60'ta 20 dakika en kötü durumda ~7.7 GB ring, artı
+  klip hazırlanırken geçici olarak bir o kadar daha.
 
-Donanım encoder'ı bulunamazsa `libx264`'e düşer, ama yazılım encode 1080p60'ta
-oyundan kare götürür — o durumda uygulama seni 1080p30'da sınırlar ve bunu açıkça
-söyler.
+Donanım encoder'ı yoksa `libx264`'e düşüyor ama yazılım encode 1080p60'ta oyundan
+gözle görülür kare götürüyor; o durumda uygulama 1080p30'da sınırlıyor.
 
-Tampon boyutu ayarlar ekranında slider'ı sürüklerken canlı olarak gösterilir.
-Uygulama diskin dolmasına izin vermez; eşiğin altına inince tamponu kendisi
-durdurur.
+## Yapamadıkları
 
----
-
-## Bilinen sınırlar
-
-- **Tek monitör kaydeder.** Tek pencere yakalama Windows.Graphics.Capture
-  gerektiriyor, henüz yok.
-- **Rozetler kayda giriyor.** Bir pencereyi Desktop Duplication'dan çıkarmak için
-  `SetWindowDisplayAffinity`'nin process'in kendi içinden çağrılması gerekiyor.
-  Electron'un `setContentProtection`'ı burada `WDA_MONITOR` uyguluyor ve pencereyi
-  gizlemek yerine **siyah dikdörtgen** çiziyor — rozetin görünmesinden kötü. Bu
-  yüzden kullanılmıyor. *Rozetleri sürekli göster* kapatılırsa rozetler sadece
-  durum değiştiğinde birkaç saniye belirir.
+- **Yalnızca tam ekran yakalıyor.** Tek pencere yakalamak
+  Windows.Graphics.Capture istiyor, henüz yazılmadı.
+- **Rozetler kayda giriyor.** Bir pencereyi Desktop Duplication'dan çıkarmanın
+  yolu `SetWindowDisplayAffinity`; Electron'un `setContentProtection`'ı burada
+  `WDA_MONITOR` uyguluyor, yani pencereyi gizlemek yerine yerine siyah dikdörtgen
+  koyuyor. Rozetin görünmesi bundan iyi olduğu için kullanılmıyor. Ayarlardan
+  rozetleri sürekli göstermeyi kapatırsan yalnızca durum değişiminde belirirler.
+- **Oyun içi panel enjeksiyon kullanmıyor.** Her zaman üstte duran bir pencere;
+  borderless ve pencereli oyunlarda görünür, gerçek exclusive fullscreen'de
+  görünmez. Oyunun swapchain'ine hook atmak anti-cheat'lerin ban sebebi olduğu
+  için tercih edilmedi.
 - **HDR, SDR'a ton eşleniyor.** Passthrough yok.
-- Ada öncesi kartlarda AV1 yok, Intel iGPU olmadan Quick Sync yok. Uygulama
-  açılışta gerçekten çalışanı deneyerek seçer.
-
----
 
 ## Nasıl çalışıyor
 
-```
-ddagrab ──► NVENC ──┐
-                    ├──► 2 saniyelik MPEG-TS segmentleri ──► janitor budar
-loopback + mic ─────┘                                              │
-                                                                   ▼
-                                              kısayol ──► baş segmenti yeniden
-                                                          encode + byte-concat
-                                                                   │
-                                                                   ▼
-                                                            tam N dakikalık mp4
-```
+Ekran `ddagrab` ile yakalanıp doğrudan donanım encoder'ına veriliyor; kareler
+sistem belleğine hiç inmiyor. Ses ayrı bir gizli sayfada toplanıp tek bir named
+pipe üzerinden aynı ffmpeg'e giriyor.
 
-Ring, 2 saniyelik bağımsız çözülebilir segmentlerden oluşur. Klip istendiğinde
-sadece **baş segment** yeniden encode edilir (istenen an keyframe'e denk
-gelmediği için), gerisi bayt bayt kopyalanır. Böylece kesim başta da sonda da
-tam olur ve işlem saniyeler sürer.
+Çıktı 2 saniyelik, birbirinden bağımsız çözülebilen MPEG-TS parçaları olarak
+diske yazılıyor. Bir janitor eskiyenleri siliyor, yani tampon sabit boyutta
+kalıyor.
+
+Klip istendiğinde yalnızca **ilk parça** yeniden encode ediliyor — çünkü istenen
+an neredeyse hiçbir zaman bir keyframe'e denk gelmiyor — gerisi bayt bayt
+kopyalanıyor. Kesim başta da sonda da tam oluyor ve işlem saniyeler sürüyor.
 
 <details>
-<summary><b>Neden bu kadar dolambaçlı</b></summary>
+<summary>Bu kısımda kolayca yanlış yapılan şeyler</summary>
 
-- `-c copy` ile `-ss` en yakın keyframe'e yapışır; "tam son 5 dakika" istiyorsan
-  baştaki kısmı yeniden encode etmen gerekir.
-- Segmentler `-forced-idr` olmadan bağımsız çözülemez ve ring sessizce bozulur.
-- `-reset_timestamps 0` şart; aksi halde her segment PTS 0'dan başlar ve birleşim
-  bozuk çıkar.
-- `ddagrab` `DXGI_ERROR_ACCESS_LOST`'u ele almıyor — tam ekran geçişleri ve
-  çözünürlük değişimlerinde ffmpeg ölür. Supervisor bunu normal akışın parçası
-  sayar ve yeniden başlatır.
+- `-c copy` ile `-ss` en yakın keyframe'e yapışır. "Tam son 5 dakika" istiyorsan
+  baştaki parçayı yeniden encode etmen gerekiyor.
+- `-forced-idr` olmadan zorlanan kareler IDR değil düz I-frame oluyor,
+  referanslar parça sınırını geçiyor ve parçalar tek başına çözülemiyor. Ring
+  sessizce bozuluyor.
+- `-reset_timestamps 0` şart. 1 yaparsan her parça PTS 0'dan başlıyor ve birleşim
+  bozuk çıkıyor. Çoğu rehber 1 diyor.
+- `ddagrab`, `DXGI_ERROR_ACCESS_LOST`'u ele almıyor. Tam ekran geçişlerinde ve
+  çözünürlük değişimlerinde ffmpeg ölüyor. Supervisor bunu hata değil normal akış
+  sayıp yeniden başlatıyor.
 
 </details>
-
----
 
 ## Geliştirme
 
 ```sh
-npm install     # ffmpeg'i de resources/ffmpeg içine indirir
-npm run dev     # kaynaktan çalıştır
-npm run dist    # release/Capture Assistant-<sürüm>-win-x64.zip üretir
+npm install     # ffmpeg'i resources/ffmpeg içine indirir
+npm run dev
+npm run dist    # release/Capture Assistant-<sürüm>-win-x64.zip
 ```
 
-Bu hattın çoğu bozulduğunda **sessizce** bozulur, o yüzden teşhis komutları var:
+Bu hattın büyük kısmı bozulduğunda sessizce bozuluyor, o yüzden ayrı teşhis
+girişleri var:
 
 ```sh
 npx electron . --audio-test       # gerçek ses yolundan 10 saniye kaydeder
-npx electron . --capture-test     # tamponu açıp bir klip kaydeder
+npx electron . --capture-test     # tamponu açıp bir klip üretir
 CA_DEBUG_HOTKEYS=1 npx electron . # hook'un gördüğü her tuşu loglar
 ```
 
-Her biri `%TEMP%` altına bir log dosyası yazar.
+Üçü de `%TEMP%` altına log yazıyor. Supervisor'ın yaşam döngüsü her zaman
+`%TEMP%\ca-supervisor.log`'a düşüyor.
 
-**Stack:** Electron · TypeScript (strict) · React · FFmpeg
-
----
+Electron · TypeScript · React · FFmpeg
