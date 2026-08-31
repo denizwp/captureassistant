@@ -99,7 +99,7 @@ function Hud() {
 
   if (!settings) return null
 
-  const armed = state.state !== 'idle'
+  const armed = settings.replay.enabled
   const recording = state.state === 'recording'
   const busy = state.state === 'assembling'
 

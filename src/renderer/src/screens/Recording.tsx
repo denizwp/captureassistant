@@ -60,7 +60,7 @@ export function RecordingScreen({
                 <Switch
                   label="Geçmiş kaydı aç"
 
-                  checked={state.state !== 'idle'}
+                  checked={settings.replay.enabled}
                   disabled={state.state === 'assembling'}
                   onChange={(enabled) => void api.toggleReplayBuffer(enabled)}
                 />

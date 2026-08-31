@@ -12,7 +12,7 @@ export function QuickActions({
   state: SupervisorState
 }) {
   const recording = state.state === 'recording'
-  const armed = state.state !== 'idle'
+  const armed = settings.replay.enabled
   const busy = state.state === 'assembling'
 
   return (
