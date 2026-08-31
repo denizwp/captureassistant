@@ -9,6 +9,11 @@ const api = {
   getState: () => ipcRenderer.invoke('state:get'),
   listMonitors: () => ipcRenderer.invoke('monitors:list'),
 
+  toggleReplayBuffer: (enabled: boolean) =>
+    ipcRenderer.invoke('capture:toggle-replay', enabled) as Promise<void>,
+  toggleRecording: () => ipcRenderer.invoke('capture:toggle-record') as Promise<void>,
+  saveReplay: () => ipcRenderer.invoke('capture:save-replay') as Promise<void>,
+
   windowMinimize: () => ipcRenderer.send('window:minimize'),
   windowClose: () => ipcRenderer.send('window:close'),
 

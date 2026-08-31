@@ -445,3 +445,54 @@
 .badge--muted { max-width: 420px; overflow: hidden; }
 .badge--error > :not(.badge__dot) { overflow: hidden; text-overflow: ellipsis; }
 .badge__dot--danger { background: var(--danger); }
+
+/* ── Quick actions ──────────────────────────────────────────────────── */
+.actions { display: grid; gap: var(--space-2); }
+
+/* Label left, keycap hint right — same shape as the select trigger, so the
+   two read as one family. */
+.btn--action { justify-content: space-between; gap: var(--space-2); }
+/* The rail is narrow — the label must never wrap, or the button grows a second
+   line and the action block loses its even rhythm. */
+.btn--action .btn__label {
+    gap: var(--space-2);
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.btn--action .ph, .btn--action .ph-fill { font-size: 16px; }
+
+.btn__hint {
+    position: relative;   /* rides above .btn__fill on emphasis buttons */
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+}
+/* On a filled button the default keycap would be an opaque light chip; tint it
+   into the fill instead. */
+.btn--emphasis .btn__hint .kbd {
+    background: oklch(100% 0 0 / .16);
+    border-color: transparent;
+    color: oklch(100% 0 0 / .8);
+}
+.btn:disabled .btn__hint { opacity: .7; }
+
+.action-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--row-h);
+    padding: 0 var(--space-1);
+}
+.action-row__label { flex: 1; min-width: 0; color: var(--text-default); }
+.action-row__keys { display: inline-flex; gap: 3px; flex-shrink: 0; }
+
+/* The generic 24px gap between sidebar groups leaves a hole under the action
+   block. Tighten it and let a hairline carry the division instead. */
+.sidebar__group--actions + .sidebar__group {
+    margin-top: var(--space-2-5);
+    padding-top: var(--space-2-5);
+    border-top: 1px solid var(--hairline);
+}

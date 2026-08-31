@@ -14,6 +14,9 @@ interface CaptureApi {
   setSettings(patch: DeepPartial<Settings>): Promise<Settings>
   getState(): Promise<SupervisorState>
   listMonitors(): Promise<MonitorInfo[]>
+  toggleReplayBuffer(enabled: boolean): Promise<void>
+  toggleRecording(): Promise<void>
+  saveReplay(): Promise<void>
   windowMinimize(): void
   windowClose(): void
   on(channel: string, listener: (payload: unknown) => void): () => void

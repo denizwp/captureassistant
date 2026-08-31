@@ -9,6 +9,8 @@ import { RecordingScreen } from './screens/Recording'
 import { AudioScreen } from './screens/Audio'
 import { HotkeysScreen } from './screens/Hotkeys'
 import { GeneralScreen } from './screens/General'
+import { QuickActions } from './components/QuickActions'
+import { Toasts } from './components/Toasts'
 import logo from '../assets/logo.png'
 
 const SCREENS = [
@@ -59,6 +61,10 @@ export function App() {
       <div className="shell">
         <aside className="sidebar">
           <div className="sidebar__scroll">
+            <div className="sidebar__group sidebar__group--actions">
+              <QuickActions settings={settings} state={state} />
+            </div>
+
             <div className="sidebar__group">
               <nav className="nav">
                 {SCREENS.map((item) => (
@@ -119,6 +125,8 @@ export function App() {
         {screen === 'hotkeys' && <HotkeysScreen settings={settings} patch={patch} />}
         {screen === 'general' && <GeneralScreen settings={settings} patch={patch} />}
       </div>
+
+      <Toasts />
     </>
   )
 }
