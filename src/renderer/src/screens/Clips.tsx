@@ -1,13 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Clip } from '@shared/state'
 import { api } from '../api'
-import { formatBytes, formatClock, formatDate } from '../format'
+import { formatBytes, formatDate } from '../format'
 import art from '../../assets/character-panel.png'
 
 export function ClipsScreen() {
   const [clips, setClips] = useState<Clip[]>([])
+  const [selected, setSelected] = useState<string | null>(null)
 
-  useEffect(() => api.on('clips', (payload) => setClips(payload as Clip[])), [])
+  const refresh = useCallback(() => {
+    void api.listClips().then(setClips)
+  }, [])
+
+  useEffect(() => {
+    refresh()
+    return api.on('clips', (payload) => setClips(payload as Clip[]))
+  }, [refresh])
+
+  const active = clips.find((clip) => clip.id === selected) ?? null
 
   return (
     <main className="content">
@@ -15,8 +25,50 @@ export function ClipsScreen() {
         <img className="pane__art" src={art} alt="" aria-hidden="true" />
         <div className="pane__header">
           <span className="pane__title">Kayıtlar</span>
-          <span className="badge badge--muted">{clips.length} klip</span>
+          <div className="setting__control">
+            {active ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => void api.openClip(active.path)}
+                >
+                  <i className="ph ph-play" />
+                  Oynat
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => void api.revealClip(active.path)}
+                >
+                  <i className="ph ph-folder-open" />
+                  Klasörde göster
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => {
+                    void api.deleteClip(active.path).then(() => setSelected(null))
+                  }}
+                >
+                  <i className="ph ph-trash" />
+                  Sil
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                onClick={() => void api.revealClipFolder()}
+              >
+                <i className="ph ph-folder-open" />
+                Klasörü aç
+              </button>
+            )}
+            <span className="badge badge--muted">{clips.length} klip</span>
+          </div>
         </div>
+
         <div className="pane__body">
           {clips.length === 0 ? (
             <div className="empty">
@@ -29,10 +81,15 @@ export function ClipsScreen() {
           ) : (
             <div className="gallery">
               {clips.map((clip) => (
-                <button type="button" className="clip" key={clip.id}>
+                <button
+                  type="button"
+                  key={clip.id}
+                  className={`clip${clip.id === selected ? ' is-selected' : ''}`}
+                  onClick={() => setSelected(clip.id === selected ? null : clip.id)}
+                  onDoubleClick={() => void api.openClip(clip.path)}
+                >
                   <span className="clip__thumb">
                     {clip.thumbnailPath ? <img src={clip.thumbnailPath} alt="" /> : null}
-                    <span className="clip__duration">{formatClock(clip.durationSec)}</span>
                   </span>
                   <span className="clip__name">{clip.name}</span>
                   <span className="clip__meta">
