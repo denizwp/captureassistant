@@ -29,6 +29,7 @@ export function registerIpc(
 
   supervisor.on('state', (state) => broadcast('state', state))
   supervisor.on('toast', (toast) => broadcast('toast', toast))
+  audio.on('levels', (levels) => broadcast('levels', levels))
   supervisor.on('clip', () => void listClips(outputDir()).then((c) => broadcast('clips', c)))
 
   ipcMain.handle('settings:get', () => store.get())
@@ -71,6 +72,8 @@ export function registerIpc(
 
   ipcMain.on('hud:open-settings', () => hooks.openSettings?.())
   ipcMain.on('hud:close', () => hooks.closeHud?.())
+
+  ipcMain.handle('audio:meter', (_e, enabled: boolean) => audio.setMetering(enabled))
 
   ipcMain.handle('audio:devices', () => {
     audio.refreshDevices()

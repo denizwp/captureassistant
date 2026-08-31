@@ -96,6 +96,10 @@ export class AudioEngine extends EventEmitter {
     this.send({ type: 'devices' })
   }
 
+  setMetering(enabled: boolean): void {
+    this.send({ type: 'meter', enabled })
+  }
+
   private send(message: unknown): void {
     if (this.ready && this.window && !this.window.isDestroyed()) {
       this.window.webContents.send('audio:command', message)
@@ -144,6 +148,10 @@ export class AudioEngine extends EventEmitter {
       } else if (this.pending.length < 250) {
         this.pending.push(chunk)
       }
+    })
+
+    ipcMain.on('audio:levels', (_e, payload: { system: number; mic: number }) => {
+      this.emit('levels', payload)
     })
 
     ipcMain.on('audio:status', (_e, payload: StatusPayload) => {

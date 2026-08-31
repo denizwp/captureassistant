@@ -74,6 +74,18 @@ export class Ring {
     return this.segments[0]?.start ?? 0
   }
 
+  /*
+   * newestEnd only moves when a segment closes, so on its own it lags real time
+   * by up to one segment. Anything that has to line up with the moment a key was
+   * pressed needs this instead.
+   */
+  get liveEnd(): number {
+    if (this.lastSegmentAt === 0) return this.newestEnd
+    return (
+      this.newestEnd + Math.min(SEGMENT_SEC, (Date.now() - this.lastSegmentAt) / 1000)
+    )
+  }
+
   beginRun(params: Omit<Run, 'id' | 'firstSegment' | 'lastSegment'>): void {
     const previous = this.runs.at(-1)
     if (previous) previous.lastSegment = this.nextSegmentNumber - 1
@@ -208,10 +220,7 @@ export class Ring {
       .then((s) => s.bavail * s.bsize)
       .catch(() => 0)
 
-    const inProgress =
-      this.lastSegmentAt > 0
-        ? Math.min(SEGMENT_SEC, (Date.now() - this.lastSegmentAt) / 1000)
-        : 0
+    const inProgress = this.liveEnd - this.newestEnd
 
     return {
       segmentCount: this.segments.length,

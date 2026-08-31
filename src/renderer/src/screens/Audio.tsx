@@ -7,6 +7,16 @@ import { api } from '../api'
 import { characterArt } from '../art'
 
 const DEFAULT_MIC = '__default__'
+const FLOOR_DB = -60
+
+function Meter({ db, active }: { db: number; active: boolean }) {
+  const filled = active ? Math.max(0, Math.min(1, (db - FLOOR_DB) / -FLOOR_DB)) : 0
+  return (
+    <div className="meter" title={active ? `${Math.round(db)} dBFS` : 'kapalı'}>
+      <div className="meter__fill" style={{ width: `${filled * 100}%` }} />
+    </div>
+  )
+}
 
 export function AudioScreen({
   settings,
@@ -17,12 +27,24 @@ export function AudioScreen({
 }) {
   const { audio } = settings
   const [devices, setDevices] = useState<{ id: string; label: string }[]>([])
+  const [levels, setLevels] = useState({ system: FLOOR_DB, mic: FLOOR_DB })
 
   useEffect(() => {
     void api.listMicDevices().then(setDevices)
     const timer = setTimeout(() => void api.listMicDevices().then(setDevices), 1200)
     return () => clearTimeout(timer)
   }, [audio.micEnabled])
+
+  useEffect(() => {
+    void api.setMetering(true)
+    const off = api.on('levels', (payload) =>
+      setLevels(payload as { system: number; mic: number })
+    )
+    return () => {
+      off()
+      void api.setMetering(false)
+    }
+  }, [])
 
   return (
     <main className="content">
@@ -60,6 +82,15 @@ export function AudioScreen({
                   <span className="slider-row__value mono">
                     {Math.round(audio.systemGain * 100)}%
                   </span>
+                </div>
+              }
+            />
+            <Setting
+              label="Giriş"
+              hint="Sistemden şu anda gelen ses."
+              control={
+                <div style={{ width: 220 }}>
+                  <Meter db={levels.system} active={audio.systemEnabled} />
                 </div>
               }
             />
@@ -111,6 +142,15 @@ export function AudioScreen({
                   <span className="slider-row__value mono">
                     {Math.round(audio.micGain * 100)}%
                   </span>
+                </div>
+              }
+            />
+            <Setting
+              label="Giriş"
+              hint="Konuşunca burası hareket etmiyorsa yanlış cihaz seçili."
+              control={
+                <div style={{ width: 220 }}>
+                  <Meter db={levels.mic} active={audio.micEnabled} />
                 </div>
               }
             />

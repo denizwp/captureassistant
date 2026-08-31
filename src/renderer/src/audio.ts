@@ -11,6 +11,7 @@ declare global {
     audioBridge: {
       writePcm(buffer: ArrayBuffer): void
       ready(): void
+      levels(payload: { system: number; mic: number }): void
       status(payload: {
         running: boolean
         error?: string
@@ -70,6 +71,45 @@ let systemStream: MediaStream | null = null
 let micStream: MediaStream | null = null
 let systemGain: GainNode | null = null
 let micGain: GainNode | null = null
+let systemMeter: AnalyserNode | null = null
+let micMeter: AnalyserNode | null = null
+let meterTimer: ReturnType<typeof setInterval> | null = null
+
+const FLOOR_DB = -100
+const meterFrame = new Float32Array(2048)
+
+function meterFor(ctx: AudioContext, node: AudioNode): AnalyserNode {
+  const analyser = ctx.createAnalyser()
+  analyser.fftSize = meterFrame.length
+  node.connect(analyser)
+  return analyser
+}
+
+function peakDb(analyser: AnalyserNode | null): number {
+  if (!analyser) return FLOOR_DB
+  analyser.getFloatTimeDomainData(meterFrame)
+  let peak = 0
+  for (const sample of meterFrame) {
+    const value = Math.abs(sample)
+    if (value > peak) peak = value
+  }
+  return peak > 0 ? Math.max(FLOOR_DB, 20 * Math.log10(peak)) : FLOOR_DB
+}
+
+/*
+ * Only runs while the settings window is up. This page lives for the whole
+ * session, and a 10Hz timer here would tick through every game.
+ */
+function setMetering(enabled: boolean): void {
+  if (meterTimer) {
+    clearInterval(meterTimer)
+    meterTimer = null
+  }
+  if (!enabled) return
+  meterTimer = setInterval(() => {
+    window.audioBridge.levels({ system: peakDb(systemMeter), mic: peakDb(micMeter) })
+  }, 100)
+}
 
 async function start(config: AudioConfig): Promise<void> {
   await stop()
@@ -89,6 +129,7 @@ async function start(config: AudioConfig): Promise<void> {
     const source = ctx.createMediaStreamSource(systemStream)
     systemGain = stereoGain(ctx, config.systemGain)
     source.connect(systemGain)
+    systemMeter = meterFor(ctx, systemGain)
     splitToMerger(ctx, systemGain, merger, 0)
   }
 
@@ -131,7 +172,10 @@ async function stop(): Promise<void> {
   micStream = null
   systemGain = null
   micGain = null
+  systemMeter = null
+  micMeter = null
   merger = null
+  setMetering(false)
 
   if (context) {
     await context.close()
@@ -156,6 +200,7 @@ async function attachMic(deviceId: string | null, gain: number): Promise<void> {
   const source = ctx.createMediaStreamSource(micStream)
   micGain = stereoGain(ctx, gain)
   source.connect(micGain)
+  micMeter = meterFor(ctx, micGain)
   splitToMerger(ctx, micGain, merger, 2)
 }
 
@@ -164,6 +209,7 @@ function detachMic(): void {
   micStream = null
   micGain?.disconnect()
   micGain = null
+  micMeter = null
 }
 
 function setGains(config: Pick<AudioConfig, 'systemGain' | 'micGain'>): void {
@@ -192,6 +238,7 @@ window.audioBridge.on((payload) => {
     | { type: 'gains'; config: Pick<AudioConfig, 'systemGain' | 'micGain'> }
     | { type: 'mic'; enabled: boolean; deviceId: string | null; gain: number }
     | { type: 'devices' }
+    | { type: 'meter'; enabled: boolean }
 
   switch (message.type) {
     case 'start':
@@ -204,6 +251,9 @@ window.audioBridge.on((payload) => {
       break
     case 'gains':
       setGains(message.config)
+      break
+    case 'meter':
+      setMetering(message.enabled)
       break
     case 'mic':
       if (message.enabled) {

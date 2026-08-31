@@ -28,7 +28,15 @@ const KEYCODES: Record<string, number> = {
   '[': UiohookKey.BracketLeft,
   '\\': UiohookKey.Backslash,
   ']': UiohookKey.BracketRight,
-  "'": UiohookKey.Quote
+  "'": UiohookKey.Quote,
+  numadd: UiohookKey.NumpadAdd,
+  numsub: UiohookKey.NumpadSubtract,
+  nummult: UiohookKey.NumpadMultiply,
+  numdiv: UiohookKey.NumpadDivide,
+  numdec: UiohookKey.NumpadDecimal,
+  ...Object.fromEntries(
+    Array.from({ length: 10 }, (_v, i) => [`num${i}`, UiohookKey[`Numpad${i}` as never]])
+  )
 }
 
 interface Binding {
@@ -42,7 +50,12 @@ interface Binding {
 }
 
 function parse(action: HotkeyAction, accelerator: string): Binding | null {
-  const parts = accelerator.split('+').map((part) => part.trim())
+  // A trailing "+" is a literal plus, not an empty final part.
+  const parts = accelerator
+    .replace(/\+\+$/, '+Plus')
+    .split('+')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
   const key = parts.at(-1)
   if (!key) return null
 

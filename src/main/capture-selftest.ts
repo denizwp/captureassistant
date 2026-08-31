@@ -1,11 +1,50 @@
 import { app } from 'electron'
-import { appendFileSync, writeFileSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import type { SupervisorState } from '@shared/state'
 import type { AudioEngine } from './audio'
 import type { SettingsStore } from './store'
 import type { SupervisorHost } from './supervisor'
+
+const run = promisify(execFile)
+
+function ffprobePath(): string {
+  const packaged = join(process.resourcesPath, 'ffmpeg', 'ffprobe.exe')
+  return existsSync(packaged)
+    ? packaged
+    : join(app.getAppPath(), 'resources', 'ffmpeg', 'ffprobe.exe')
+}
+
+async function newestClip(dir: string, prefix: string): Promise<string | null> {
+  const files = (await readdir(dir).catch(() => [])).filter(
+    (name) => name.startsWith(prefix) && name.endsWith('.mp4')
+  )
+  let newest: { path: string; at: number } | null = null
+  for (const name of files) {
+    const path = join(dir, name)
+    const info = await stat(path).catch(() => null)
+    if (info && (!newest || info.mtimeMs > newest.at)) newest = { path, at: info.mtimeMs }
+  }
+  return newest?.path ?? null
+}
+
+async function durationOf(path: string): Promise<number | null> {
+  try {
+    const { stdout } = await run(ffprobePath(), [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'csv=p=0',
+      path
+    ])
+    const value = Number(stdout.trim())
+    return Number.isFinite(value) ? value : null
+  } catch {
+    return null
+  }
+}
 
 export async function runCaptureSelfTest(
   supervisor: SupervisorHost,
@@ -53,6 +92,31 @@ export async function runCaptureSelfTest(
   log('saving replay')
   supervisor.saveReplay()
   await wait(12_000)
+
+  const RECORD_SEC = 10
+  log(`manual recording: start, holding ${RECORD_SEC}s`)
+  const startedAt = Date.now()
+  supervisor.record(true)
+  await wait(RECORD_SEC * 1000)
+  supervisor.record(false)
+  const held = (Date.now() - startedAt) / 1000
+  log(`manual recording: released after ${held.toFixed(2)}s`)
+  await wait(12_000)
+
+  const recorded = await newestClip(outDir, 'Kayıt')
+  if (!recorded) {
+    log('FAILED: manual recording produced no clip')
+  } else {
+    const actual = await durationOf(recorded)
+    const drift = actual === null ? null : actual - held
+    log(`manual clip: ${recorded.split(/[\\/]/).at(-1)}`)
+    log(`  held ${held.toFixed(2)}s, clip ${actual?.toFixed(2) ?? '?'}s, drift ${drift?.toFixed(2) ?? '?'}s`)
+    if (drift !== null && Math.abs(drift) > 1.5) {
+      log(`  FAILED: recording is off by ${drift.toFixed(2)}s`)
+    } else if (drift !== null) {
+      log('  OK: recording lines up with the button')
+    }
+  }
 
   supervisor.arm(false)
   await wait(1500)

@@ -31,8 +31,8 @@ almanın ek bir maliyeti olmaz.
 `CaptureAssistant-<sürüm>.exe` dosyasını indir ve çalıştır. Hepsi bu.
 
 Installer yok — kayıt defterine yazmaz, Program Files'a kurulmaz, yönetici yetkisi
-istemez. Uygulama ilk açılışta kendini geçici bir klasöre açar, sonraki açılışlarda
-onu yeniden kullanır. Kaldırmak için exe'yi silmen yeterli.
+istemez. Uygulama her açılışta kendini geçici bir klasöre açar, o yüzden ilk pencere
+birkaç saniye gecikir. Kaldırmak için exe'yi silmen yeterli.
 
 FFmpeg pakete dahil. Dosya bu yüzden ~150 MB, karşılığında hiçbir şey indirmeden
 çalışıyor.

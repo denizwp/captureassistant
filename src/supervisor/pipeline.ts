@@ -31,6 +31,7 @@ export interface RingArgsInput {
   capture: CaptureSettings
   encoder: EncoderChoice
   outputIdx: number
+  adapterIdx: number
   ringDir: string
   startNumber: number
   drawMouse: boolean
@@ -40,7 +41,8 @@ export interface RingArgsInput {
 }
 
 export function buildRingArgs(input: RingArgsInput): string[] {
-  const { capture, encoder, outputIdx, ringDir, startNumber, drawMouse, audioPipe } = input
+  const { capture, encoder, outputIdx, adapterIdx, ringDir, startNumber, drawMouse, audioPipe } =
+    input
   const maxrateKbps =
     capture.bitrateKbps > 0 ? capture.bitrateKbps : PRESET_MAXRATE_KBPS[capture.preset]
 
@@ -59,7 +61,7 @@ export function buildRingArgs(input: RingArgsInput): string[] {
     '-loglevel', 'level+warning',
     '-progress', 'pipe:1',
 
-    '-init_hw_device', `d3d11va=dda:${outputIdx}`,
+    '-init_hw_device', `d3d11va=dda:${adapterIdx}`,
     '-filter_hw_device', 'dda',
 
     ...(audioPipe
