@@ -1,0 +1,23 @@
+node_modules/
+dist/
+out/
+release/
+.vite/
+
+# native + bundled binaries
+*.node
+resources/ffmpeg/
+
+# runtime artifacts
+encoders.json
+ring/
+recordings/
+*.log
+
+# env / editor
+.env
+.env.*
+.DS_Store
+Thumbs.db
+.vscode/
+!.vscode/extensions.json
