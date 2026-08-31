@@ -149,9 +149,14 @@ async function startEncoder(): Promise<void> {
   })
 
   let stderr = ''
+  // 887a0026 is DXGI_ERROR_ACCESS_LOST. ddagrab has no recovery path for it, so
+  // ffmpeg always dies here; while a game is running that is a normal event,
+  // not a malfunction.
+  let accessLost = false
   proc.stderr?.on('data', (chunk: Buffer) => {
     const text = chunk.toString()
     stderr = `${stderr}${text}`.slice(-2000)
+    if (text.includes('887a0026')) accessLost = true
     for (const line of text.split('\n')) {
       if (line.trim()) log(`ffmpeg: ${line.trim()}`, 'warning')
     }
@@ -162,7 +167,9 @@ async function startEncoder(): Promise<void> {
     if (stopping || state === 'idle') return
 
     const lived = Date.now() - startedAt
-    consecutiveFailures = lived < HEALTHY_RUN_MS ? consecutiveFailures + 1 : 0
+    // Losing the duplication says nothing about whether we can encode, so it
+    // must not count towards the give-up counter or the back-off.
+    consecutiveFailures = accessLost || lived >= HEALTHY_RUN_MS ? 0 : consecutiveFailures + 1
 
     if (consecutiveFailures > MAX_FAST_FAILURES) {
       const detail = stderr.trim().split('\n').filter(Boolean).at(-1) ?? `çıkış kodu ${code}`
@@ -172,11 +179,14 @@ async function startEncoder(): Promise<void> {
       return
     }
 
-    log(`encoder exited (${code}) after ${(lived / 1000).toFixed(1)}s — restarting`, 'warning')
+    if (accessLost) log(`screen capture lost after ${(lived / 1000).toFixed(1)}s — reclaiming`)
+    else log(`encoder exited (${code}) after ${(lived / 1000).toFixed(1)}s — restarting`, 'warning')
     if (restarting) return
     restarting = true
 
-    const delay = Math.min(400 * 2 ** consecutiveFailures, 5000)
+    // Every millisecond here is a hole in the buffer, and the duplication is
+    // ready again as soon as the compositor settles.
+    const delay = accessLost ? 0 : Math.min(400 * 2 ** consecutiveFailures, 5000)
     setTimeout(() => {
       restarting = false
       void startEncoder().catch((error: unknown) => fail(String(error)))
