@@ -11,6 +11,7 @@ import { Overlay } from './overlay'
 import { warnIfHotkeysBlocked } from './elevation'
 import { warnIfHdr } from './hdr'
 import { pruneThumbnails } from './thumbnails'
+import { checkForUpdate, discardOldBuild } from './updater'
 import { Hud } from './hud'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
@@ -178,6 +179,8 @@ if (!singleInstance) {
 
     void pruneThumbnails()
     void discardLegacyUserData()
+    void discardOldBuild()
+    setTimeout(() => void checkForUpdate().catch(() => undefined), 4000)
 
     app.on('will-quit', () => {
       hotkeys.stop()
