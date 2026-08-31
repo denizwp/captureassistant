@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { DeepPartial } from '@shared/ipc'
 import type { HotkeySettings, Settings } from '@shared/settings'
+import { DEFAULT_SETTINGS } from '@shared/settings'
 import { Keys, Section } from '../components/controls'
 import art from '../../assets/character-panel.png'
 
@@ -84,6 +85,10 @@ export function HotkeysScreen({
     return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [listening, patch, stop])
 
+  const isDefault = (Object.keys(DEFAULT_SETTINGS.hotkeys) as (keyof HotkeySettings)[]).every(
+    (key) => settings.hotkeys[key] === DEFAULT_SETTINGS.hotkeys[key]
+  )
+
   // Two bindings on the same combo would race; flag them rather than silently
   // letting the last writer win.
   const counts = new Map<string, number>()
@@ -102,7 +107,17 @@ export function HotkeysScreen({
               <span className="badge__dot badge__dot--success" />
               Tuş bekleniyor — çıkmak için Esc
             </span>
-          ) : null}
+          ) : (
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              disabled={isDefault}
+              onClick={() => patch({ hotkeys: DEFAULT_SETTINGS.hotkeys })}
+            >
+              <i className="ph ph-arrow-counter-clockwise" />
+              Varsayılana dön
+            </button>
+          )}
         </div>
         <div className="pane__body">
           <Section title="Bağlar">
