@@ -353,11 +353,25 @@ async function stopRecording(): Promise<void> {
 }
 
 async function saveReplay(): Promise<void> {
-  if (!ring || !settings) {
+  if (!ring || !settings || state === 'idle') {
     toast('warning', 'Geçmiş kayıt açık değil.')
     return
   }
+  if (state === 'assembling') {
+    toast('info', 'Önceki klip hazırlanıyor.')
+    return
+  }
+
+  // Segments only land on disk when the muxer closes them, so there is a short
+  // window after arming where the buffer genuinely holds nothing. That is
+  // normal, not a failure — say so plainly instead of throwing.
+  await ring.poll()
   const to = ring.newestEnd
+  if (to <= 0) {
+    toast('info', 'Tampon henüz doluyor — birkaç saniye bekle.')
+    return
+  }
+
   const from = to - settings.replay.durationSec
   await buildClip(from, to, 'Klip')
 }
@@ -394,7 +408,8 @@ async function buildClip(from: number, to: number, label: string): Promise<void>
     log(`clip written: ${result.path}`, 'success')
     send({ type: 'clip', path: result.path, durationSec: result.durationSec })
   } catch (error) {
-    fail(`Klip oluşturulamadı: ${String(error)}`)
+    const detail = error instanceof Error ? error.message : String(error)
+    fail(`Klip oluşturulamadı: ${detail}`)
   } finally {
     state = previous === 'assembling' ? 'armed' : previous
     await publish()
