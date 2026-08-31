@@ -52,6 +52,7 @@ export class Ring {
   private bytesPerSec = 0
 
   private writtenBytes = 0
+  private lastSegmentAt = 0
   private bytesOnDisk = 0
 
   constructor(private readonly dir: string) {}
@@ -113,6 +114,7 @@ export class Ring {
         if (segment) {
           this.segments.push(segment)
           added.push(segment)
+          this.lastSegmentAt = Date.now()
         }
       }
       return added
@@ -205,9 +207,17 @@ export class Ring {
     const free = await statfs(this.dir)
       .then((s) => s.bavail * s.bsize)
       .catch(() => 0)
+    // The segment being written right now holds real footage, it just is not
+    // indexed until the muxer closes it. Counting it keeps the readout moving
+    // every second instead of jumping two at a time.
+    const inProgress =
+      this.lastSegmentAt > 0
+        ? Math.min(SEGMENT_SEC, (Date.now() - this.lastSegmentAt) / 1000)
+        : 0
+
     return {
       segmentCount: this.segments.length,
-      bufferedSec: this.newestEnd - this.oldestStart,
+      bufferedSec: this.newestEnd - this.oldestStart + inProgress,
       bytesOnDisk,
       bytesPerSec: this.bytesPerSec,
       freeDiskBytes: free
@@ -256,6 +266,7 @@ export class Ring {
     this.bytesOnDisk = 0
     this.lastBytes = 0
     this.bytesPerSec = 0
+    this.lastSegmentAt = 0
 
     await unlinkPatiently(this.indexPath)
     await unlinkPatiently(join(this.dir, 'runs.json'))
