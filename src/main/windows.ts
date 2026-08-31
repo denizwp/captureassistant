@@ -3,6 +3,14 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import type { SettingsStore } from './store'
 
+/** Set once the user has actually asked to quit, so the close handler stops
+ *  intercepting. Without it "Çıkış" would just hide the window forever. */
+let quitting = false
+
+export function beginQuit(): void {
+  quitting = true
+}
+
 const preload = join(__dirname, '../preload/index.js')
 
 /** Packaged builds ship `resources/` next to the app; in dev it sits at the
@@ -27,7 +35,10 @@ function loadRenderer(win: BrowserWindow, page: string): void {
   }
 }
 
-export function createMainWindow(store: SettingsStore): BrowserWindow {
+export function createMainWindow(
+  store: SettingsStore,
+  options: { show?: boolean } = {}
+): BrowserWindow {
   const win = new BrowserWindow({
     width: 1100,
     height: 720,
@@ -45,7 +56,15 @@ export function createMainWindow(store: SettingsStore): BrowserWindow {
     }
   })
 
-  win.once('ready-to-show', () => win.show())
+  if (options.show !== false) win.once('ready-to-show', () => win.show())
+
+  // Closing the window is not closing the app: the replay buffer has to keep
+  // running, which is the entire point of a background recorder.
+  win.on('close', (event) => {
+    if (quitting || !store.get().app.minimizeToTray) return
+    event.preventDefault()
+    win.hide()
+  })
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url)

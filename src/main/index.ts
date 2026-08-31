@@ -1,10 +1,11 @@
-import { app, BrowserWindow, session } from 'electron'
+import { app, session } from 'electron'
 import { join } from 'node:path'
 import { SettingsStore } from './store'
-import { createMainWindow } from './windows'
+import { beginQuit, createMainWindow } from './windows'
 import { registerIpc } from './ipc'
 import { AudioEngine } from './audio'
 import { SupervisorHost } from './supervisor'
+import { TrayController } from './tray'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
 
@@ -28,14 +29,10 @@ if (!singleInstance) {
 } else {
   const store = new SettingsStore()
 
-  app.on('second-instance', () => {
-    const [existing] = BrowserWindow.getAllWindows()
-    if (existing) {
-      if (existing.isMinimized()) existing.restore()
-      existing.show()
-      existing.focus()
-    }
-  })
+  // Assigned once the window exists. A second launch while the app sits in the
+  // tray should surface the window, not start a second recorder.
+  let showWindow = (): void => undefined
+  app.on('second-instance', () => showWindow())
 
   const audio = new AudioEngine()
   const supervisor = new SupervisorHost()
@@ -66,24 +63,56 @@ if (!singleInstance) {
       return
     }
 
+    // The engine starts idle, so the stored flag has to agree. Leaving it true
+    // from a previous session made the UI offer a buffer that did not exist.
+    store.update({ replay: { enabled: false } })
     supervisor.start(store.get())
-    registerIpc(store, audio, supervisor)
-    createMainWindow(store)
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createMainWindow(store)
+    const startHidden = process.argv.includes('--hidden')
+    let window = createMainWindow(store, { show: !startHidden })
+    showWindow = (): void => {
+      if (window.isDestroyed()) window = createMainWindow(store)
+      if (window.isMinimized()) window.restore()
+      window.show()
+      window.focus()
+    }
+
+    const tray = new TrayController(store, {
+      showWindow,
+      toggleReplay: (enabled) => {
+        void (enabled ? audio.start(store.get().audio) : Promise.resolve(audio.stop()))
+        store.update({ replay: { enabled } })
+        supervisor.arm(enabled)
+      },
+      toggleRecording: () => {
+        const recording = supervisor.getState().state === 'recording'
+        if (!recording) void audio.start(store.get().audio)
+        supervisor.record(!recording)
+      },
+      saveReplay: () => supervisor.saveReplay(),
+      quit: () => {
+        beginQuit()
+        app.quit()
+      }
     })
+    tray.start()
+    supervisor.on('state', (state) => tray.update(state))
+
+    registerIpc(store, audio, supervisor, () => tray.refresh())
+
+    app.on('activate', showWindow)
   })
 
   app.on('before-quit', () => {
+    beginQuit()
     supervisor.shutdown()
     void audio.close()
   })
 
-  // The tray keeps the buffer alive after the window closes, so on Windows we
-  // deliberately do NOT quit here once the tray lands. Until then, quit.
+  // The tray keeps the app alive with no windows open — that is how the buffer
+  // survives closing the window.
   app.on('window-all-closed', () => {
-    app.quit()
+    if (!store.get().app.minimizeToTray) app.quit()
   })
 }
 
