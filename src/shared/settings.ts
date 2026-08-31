@@ -112,7 +112,7 @@ export const DEFAULT_SETTINGS: Settings = {
     theme: 'dark',
     indicatorCorner: 'bottom-right',
     indicatorOpacity: 0.9,
-    alwaysShowIndicators: true,
+    alwaysShowIndicators: false,
     showCharacterArt: false
   }
 }

@@ -308,6 +308,12 @@
     font-weight: var(--fw-medium);
     color: var(--text-default);
 }
+@property --pane-fade {
+    syntax: '<length>';
+    inherits: false;
+    initial-value: 0px;
+}
+
 .pane__body {
     position: relative;
     z-index: 1;
@@ -316,6 +322,27 @@
     overflow-y: auto;
     padding: var(--space-4) var(--space-5) var(--space-6);
     scrollbar-width: thin;
+
+    /* Fades the last rows so it reads as scrollable. Tied to the scroll
+       position, so it lifts at the bottom instead of dimming the final row for
+       good. */
+    -webkit-mask-image: linear-gradient(
+        to bottom,
+        #000 calc(100% - var(--pane-fade)),
+        transparent 100%
+    );
+    mask-image: linear-gradient(
+        to bottom,
+        #000 calc(100% - var(--pane-fade)),
+        transparent 100%
+    );
+    animation: pane-fade linear both;
+    animation-timeline: scroll(self);
+}
+
+@keyframes pane-fade {
+    0%, 88% { --pane-fade: 32px; }
+    100% { --pane-fade: 0px; }
 }
 
 :root:not([data-art="on"]) .pane__art { display: none; }

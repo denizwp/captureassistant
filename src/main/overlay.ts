@@ -1,7 +1,21 @@
-import { BrowserWindow, screen } from 'electron'
+import { app, BrowserWindow, screen } from 'electron'
+import { appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AppSettings, IndicatorCorner } from '@shared/settings'
 import type { SupervisorState } from '@shared/state'
+
+const DEBUG = process.env['CA_DEBUG_OVERLAY'] === '1'
+
+function trace(message: string): void {
+  if (!DEBUG) return
+  try {
+    appendFileSync(
+      join(app.getPath('temp'), 'ca-overlay.log'),
+      `${new Date().toISOString()} ${message}
+`
+    )
+  } catch {}
+}
 
 const MARGIN = 6
 
@@ -125,6 +139,11 @@ export class Overlay {
     if (!win || win.isDestroyed()) return
 
     const anything = payload.recording || payload.replayArmed || payload.micActive
+    trace(
+      `apply anything=${anything} changed=${changed} alwaysShow=${alwaysShow} ` +
+        `rec=${payload.recording} armed=${payload.replayArmed} mic=${payload.micActive} ` +
+        `visible=${win.isVisible()}`
+    )
     if (!anything) {
       this.clearTimer()
       win.hide()

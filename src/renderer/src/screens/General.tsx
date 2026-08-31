@@ -107,7 +107,7 @@ export function GeneralScreen({
             />
             <Setting
               label="Rozetleri sürekli göster"
-              hint="Açıkken kayıt veya tampon çalıştığı sürece rozetler ekranda kalır — ve kaydedilen görüntüde de görünürler. Kapatırsan yalnızca durum değiştiğinde birkaç saniye belirip gizlenirler; bu hem kaydı temiz tutar hem de tam ekran oyunlarda G-Sync'in bozulmasını önler."
+              hint="Kapalıyken rozetler yalnızca durum değiştiğinde birkaç saniye belirir, sonra gizlenir — kayda girmezler ve tam ekran oyunlarda G-Sync bozulmaz. Açarsan kayıt boyunca ekranda kalırlar, ama kaydedilen görüntüde de görünürler."
               control={
                 <Switch
                   label="Rozetleri sürekli göster"

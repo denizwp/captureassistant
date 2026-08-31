@@ -64,15 +64,29 @@ function parse(action: HotkeyAction, accelerator: string): Binding | null {
 const DEBUG = process.env['CA_DEBUG_HOTKEYS'] === '1'
 let debugPath = ''
 
-function debug(message: string): void {
-  if (!DEBUG) return
+function write(message: string): void {
   if (!debugPath) debugPath = join(app.getPath('temp'), 'ca-hotkeys.log')
   try {
     appendFileSync(debugPath, `${new Date().toISOString()} ${message}\n`)
   } catch {}
 }
 
-const DEDUP_MS = 250
+/** Every key the hook sees — only with CA_DEBUG_HOTKEYS=1, it is a lot. */
+function debug(message: string): void {
+  if (DEBUG) write(message)
+}
+
+/*
+ * One physical press can reach us several times: the hook and globalShortcut
+ * both see it, and Windows key repeat turns a slightly-held combination into a
+ * stream. Measured in practice: a single Alt+F8 arrived four times, 400-800ms
+ * apart, which toggled the buffer on-off-on-off and left it off.
+ *
+ * Small, because only one path is ever armed at a time now. This is just for
+ * a stray double delivery, not for the two-paths-both-firing problem that used
+ * to make a single press toggle four times.
+ */
+const DEDUP_MS = 200
 
 const WATCHDOG_MS = 30_000
 
@@ -81,11 +95,12 @@ export class HotkeyManager extends EventEmitter {
   private hookRunning = false
   private watchdog: NodeJS.Timeout | null = null
   private lastFired = new Map<HotkeyAction, number>()
-  private lastEventAt = 0
 
   start(hotkeys: HotkeySettings): void {
-    this.bind(hotkeys)
+    // Hook first: whether it installed decides whether globalShortcut is needed
+    // at all.
     this.startHook()
+    this.bind(hotkeys)
     this.watchdog = setInterval(() => this.checkHook(), WATCHDOG_MS)
   }
 
@@ -112,6 +127,12 @@ export class HotkeyManager extends EventEmitter {
           `ctrl=${binding.ctrl} alt=${binding.alt} shift=${binding.shift} meta=${binding.meta}`
       )
 
+      // Only as a fallback. Registering both means Windows and the hook each
+      // report the same press, and key repeat then multiplies it — one press
+      // was arriving four times. RegisterHotKey is also exclusive: it takes the
+      // combination away from every other app, which the hook never does.
+      if (this.hookRunning) continue
+
       try {
         if (!globalShortcut.register(accelerator, () => this.fire(action, 'globalShortcut'))) {
           this.emit('conflict', { action, accelerator })
@@ -128,7 +149,9 @@ export class HotkeyManager extends EventEmitter {
       uIOhook.on('keydown', this.onKeyDown)
       uIOhook.start()
       this.hookRunning = true
-      debug('hook started')
+      write('hook installed; globalShortcut not needed')
+      // If the hook came up late, drop the fallback registrations.
+      globalShortcut.unregisterAll()
     } catch (error) {
       this.emit('warning', `Klavye dinleyicisi kurulamadı: ${String(error)}`)
     }
@@ -144,18 +167,13 @@ export class HotkeyManager extends EventEmitter {
   }
 
   private checkHook(): void {
-    if (!this.hookRunning) {
-      this.startHook()
-      return
-    }
-    if (Date.now() - this.lastEventAt > WATCHDOG_MS * 2) {
-      this.stopHook()
-      this.startHook()
-    }
+    // Only when it is actually down. Tearing the hook up and down on a timer
+    // because nobody has typed for a minute is how you crash uiohook-napi, and
+    // an idle machine is not a dead hook.
+    if (!this.hookRunning) this.startHook()
   }
 
   private readonly onKeyDown = (event: UiohookKeyboardEvent): void => {
-    this.lastEventAt = Date.now()
     debug(
       `key ${event.keycode} ctrl=${event.ctrlKey} alt=${event.altKey} ` +
         `shift=${event.shiftKey} meta=${event.metaKey}`
@@ -184,7 +202,9 @@ export class HotkeyManager extends EventEmitter {
       return
     }
     this.lastFired.set(action, now)
-    debug(`fired ${action} from ${source}`)
+    // Always recorded: a binding firing when nobody pressed it is invisible
+    // otherwise, and it is only a handful of lines a session.
+    write(`fired ${action} from ${source}`)
     this.emit('trigger', action, source)
   }
 }

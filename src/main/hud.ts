@@ -5,12 +5,18 @@ import { join } from 'node:path'
 const WIDTH = 760
 const HEIGHT = 520
 
-/* Translucent so the acrylic shows, but never white in dark mode and never
-   black in light mode — this is what Chromium paints before the renderer has
-   drawn anything. */
+/*
+ * Exactly the colour the panel renders as, measured from a screenshot.
+ *
+ * Hiding a window lets Chromium release its compositor surface, so on show
+ * there are a few frames of nothing but this colour before the content is
+ * rastered again. Any mismatch reads as a flash. Acrylic made it worse: the
+ * material itself is mid grey, and the panel over it came out at rgb(11,11,11)
+ * anyway, so the blur was contributing nothing but that flash.
+ */
 const BASE_COLOR: Record<AppSettings['theme'], string> = {
-  dark: '#b3121214',
-  light: '#d9f7f7f8'
+  dark: '#0b0b0b',
+  light: '#fbfbfb'
 }
 
 /*
@@ -43,14 +49,10 @@ export class Hud {
       width: WIDTH,
       height: HEIGHT,
       frame: false,
-      // Not `transparent: true`: backdrop-filter inside a transparent Electron
-      // window cannot sample what is behind the window, so the panel ends up
-      // fully see-through and unreadable over a game. Windows 11's own acrylic
-      // does the blur in the compositor, where the backdrop actually exists.
-      // Until the renderer paints, Chromium fills the window with this colour;
-      // #00000000 reads as white for that frame.
       backgroundColor: BASE_COLOR[theme],
-      backgroundMaterial: 'acrylic',
+      // DWM rounds the window itself, so the fill covers the exact shape the
+      // panel occupies and there is no corner to pop in later.
+      roundedCorners: true,
       resizable: false,
       movable: false,
       minimizable: false,

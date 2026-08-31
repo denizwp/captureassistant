@@ -38,7 +38,7 @@ indirmeden çalışıyor.
 
 ## Kısayollar
 
-| | |
+| Tuş | Aksiyon |
 |:--|:--|
 | <kbd>Alt</kbd>+<kbd>F9</kbd> | Kaydı başlat / durdur |
 | <kbd>Alt</kbd>+<kbd>F10</kbd> | Geçmiş kaydı kaydet |
@@ -108,22 +108,6 @@ Klip istendiğinde yalnızca **ilk parça** yeniden encode ediliyor — çünkü
 an neredeyse hiçbir zaman bir keyframe'e denk gelmiyor — gerisi bayt bayt
 kopyalanıyor. Kesim başta da sonda da tam oluyor ve işlem saniyeler sürüyor.
 
-<details>
-<summary>Bu kısımda kolayca yanlış yapılan şeyler</summary>
-
-- `-c copy` ile `-ss` en yakın keyframe'e yapışır. "Tam son 5 dakika" istiyorsan
-  baştaki parçayı yeniden encode etmen gerekiyor.
-- `-forced-idr` olmadan zorlanan kareler IDR değil düz I-frame oluyor,
-  referanslar parça sınırını geçiyor ve parçalar tek başına çözülemiyor. Ring
-  sessizce bozuluyor.
-- `-reset_timestamps 0` şart. 1 yaparsan her parça PTS 0'dan başlıyor ve birleşim
-  bozuk çıkıyor. Çoğu rehber 1 diyor.
-- `ddagrab`, `DXGI_ERROR_ACCESS_LOST`'u ele almıyor. Tam ekran geçişlerinde ve
-  çözünürlük değişimlerinde ffmpeg ölüyor. Supervisor bunu hata değil normal akış
-  sayıp yeniden başlatıyor.
-
-</details>
-
 ## Geliştirme
 
 ```sh
@@ -143,5 +127,3 @@ CA_DEBUG_HOTKEYS=1 npx electron . # hook'un gördüğü her tuşu loglar
 
 Üçü de `%TEMP%` altına log yazıyor. Supervisor'ın yaşam döngüsü her zaman
 `%TEMP%\ca-supervisor.log`'a düşüyor.
-
-Electron · TypeScript · React · FFmpeg
