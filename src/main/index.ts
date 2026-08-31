@@ -4,7 +4,9 @@ import { SettingsStore } from './store'
 import { createMainWindow } from './windows'
 import { registerIpc } from './ipc'
 import { AudioEngine } from './audio'
+import { SupervisorHost } from './supervisor'
 import { runAudioSelfTest } from './audio-selftest'
+import { runCaptureSelfTest } from './capture-selftest'
 
 /**
  * Performance switches, applied before `app.whenReady()` because Chromium reads
@@ -36,6 +38,7 @@ if (!singleInstance) {
   })
 
   const audio = new AudioEngine()
+  const supervisor = new SupervisorHost()
 
   app.whenReady().then(async () => {
     app.setAppUserModelId('com.captureassistant.app')
@@ -55,7 +58,16 @@ if (!singleInstance) {
       return
     }
 
-    registerIpc(store, audio)
+    if (process.argv.includes('--capture-test')) {
+      await runCaptureSelfTest(supervisor, audio, store)
+      supervisor.shutdown()
+      await audio.close()
+      app.quit()
+      return
+    }
+
+    supervisor.start(store.get())
+    registerIpc(store, audio, supervisor)
     createMainWindow(store)
 
     app.on('activate', () => {
@@ -64,6 +76,7 @@ if (!singleInstance) {
   })
 
   app.on('before-quit', () => {
+    supervisor.shutdown()
     void audio.close()
   })
 

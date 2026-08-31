@@ -1,6 +1,6 @@
 import type { DeepPartial } from '@shared/ipc'
 import type { Settings } from '@shared/settings'
-import type { SupervisorState } from '@shared/state'
+import type { Clip, SupervisorState } from '@shared/state'
 
 export interface MonitorInfo {
   id: string
@@ -14,6 +14,11 @@ interface CaptureApi {
   setSettings(patch: DeepPartial<Settings>): Promise<Settings>
   getState(): Promise<SupervisorState>
   listMonitors(): Promise<MonitorInfo[]>
+  listClips(): Promise<Clip[]>
+  revealClip(path: string): Promise<void>
+  openClip(path: string): Promise<void>
+  deleteClip(path: string): Promise<void>
+  revealClipFolder(): Promise<void>
   toggleReplayBuffer(enabled: boolean): Promise<void>
   toggleRecording(): Promise<void>
   saveReplay(): Promise<void>

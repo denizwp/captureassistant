@@ -9,6 +9,12 @@ const api = {
   getState: () => ipcRenderer.invoke('state:get'),
   listMonitors: () => ipcRenderer.invoke('monitors:list'),
 
+  listClips: () => ipcRenderer.invoke('clips:list'),
+  revealClip: (path: string) => ipcRenderer.invoke('clips:reveal', path),
+  openClip: (path: string) => ipcRenderer.invoke('clips:open', path),
+  deleteClip: (path: string) => ipcRenderer.invoke('clips:delete', path),
+  revealClipFolder: () => ipcRenderer.invoke('clips:reveal-folder'),
+
   toggleReplayBuffer: (enabled: boolean) =>
     ipcRenderer.invoke('capture:toggle-replay', enabled) as Promise<void>,
   toggleRecording: () => ipcRenderer.invoke('capture:toggle-record') as Promise<void>,
