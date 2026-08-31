@@ -40,6 +40,7 @@ let ringDir = ''
 let outDir = ''
 let audioPipe = ''
 let audioDisabled = false
+let bufferArmed = false
 let outputIdx = 0
 let adapterIdx = 0
 let ring: Ring | null = null
@@ -143,6 +144,7 @@ async function startEncoder(): Promise<void> {
     if (consecutiveFailures > MAX_FAST_FAILURES) {
       const detail = stderr.trim().split('\n').filter(Boolean).at(-1) ?? `çıkış kodu ${code}`
       state = 'idle'
+      bufferArmed = false
       fail(`Kayıt motoru başlatılamıyor: ${detail.slice(0, 200)}`)
       return
     }
@@ -233,7 +235,10 @@ async function tick(): Promise<void> {
   await ring.measure()
   await watchForStall()
 
-  const keep = settings.replay.enabled
+  // Being armed is what "the buffer is on" means. Reading it off the settings
+  // instead lets a stale copy shrink the ring to the idle window while the user
+  // watches it sit at twenty seconds.
+  const keep = bufferArmed
     ? settings.replay.durationSec + settings.replay.postRollSec
     : SEGMENT_SEC * 4
   await ring.prune(keep)
@@ -291,6 +296,7 @@ async function ensureEncoder(): Promise<boolean> {
 
 async function setArmed(enabled: boolean): Promise<void> {
   if (!settings) return
+  bufferArmed = enabled
 
   if (enabled) {
     if (state !== 'idle') return
@@ -324,7 +330,14 @@ async function startRecording(): Promise<void> {
     await ring.reset()
     await startEncoder()
 
-    await new Promise((resolve) => setTimeout(resolve, 200))
+    // Nothing exists until ffmpeg has written its first segment, so start the
+    // clock from there. Counting from the keypress instead would promise a
+    // second of footage that was never captured.
+    const deadline = Date.now() + 6000
+    while (ring.newestEnd <= 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      await ring.poll()
+    }
   }
 
   recordStart = ring?.liveEnd ?? 0
@@ -343,7 +356,7 @@ async function stopRecording(): Promise<void> {
   const from = recordStart ?? 0
   const to = ring.liveEnd
   recordStart = null
-  state = settings.replay.enabled ? 'armed' : 'idle'
+  state = bufferArmed ? 'armed' : 'idle'
   await publish()
 
   await waitForSegment(to)
@@ -351,7 +364,7 @@ async function stopRecording(): Promise<void> {
 
   await buildClip(from, to, 'Kayıt')
 
-  if (!settings.replay.enabled) {
+  if (!bufferArmed) {
     await stopEncoder()
     await ring.prune(0)
     ring = null
@@ -374,7 +387,7 @@ async function waitForSegment(target: number): Promise<void> {
 }
 
 async function saveReplay(): Promise<void> {
-  if (!settings?.replay.enabled || !ring || state === 'idle') {
+  if (!bufferArmed || !ring || !settings || state === 'idle') {
     toast('warning', 'Geçmiş kayıt açık değil.')
     return
   }
@@ -562,6 +575,7 @@ async function handle(message: Incoming): Promise<void> {
 
     case 'shutdown':
       state = 'idle'
+      bufferArmed = false
       await stopEncoder()
       break
   }
