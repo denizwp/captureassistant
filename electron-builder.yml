@@ -33,7 +33,7 @@ win:
   icon: build/icon.ico
 
 portable:
-  artifactName: CaptureAssistant-${version}.exe
+  artifactName: CaptureAssistant.exe
   unpackDirName: CaptureAssistant
   requestExecutionLevel: user
 

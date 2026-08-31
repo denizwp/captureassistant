@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -58,8 +58,7 @@ async function build() {
 async function main() {
   await build()
 
-  const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  const exe = join(root, 'release', `CaptureAssistant-${pkg.version}.exe`)
+  const exe = join(root, 'release', 'CaptureAssistant.exe')
 
   const info = await stat(exe).catch(() => null)
   if (!info) throw new Error(`packaging produced no ${exe}`)
