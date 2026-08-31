@@ -1,15 +1,7 @@
 import { app } from 'electron'
-import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
-
-const run = promisify(execFile)
-
-export interface AudioApp {
-  pid: number
-  exe: string
-}
 
 function helperPath(): string {
   const packaged = join(process.resourcesPath, 'ca-audio-capture.exe')
@@ -20,22 +12,6 @@ function helperPath(): string {
 
 export function helperAvailable(): boolean {
   return existsSync(helperPath())
-}
-
-/* Only apps holding an audio session show up, which is the list worth offering. */
-export async function listAudioApps(): Promise<AudioApp[]> {
-  try {
-    const { stdout } = await run(helperPath(), ['--list'], { timeout: 5000 })
-    return JSON.parse(stdout) as AudioApp[]
-  } catch {
-    return []
-  }
-}
-
-export async function listAudioAppNames(): Promise<string[]> {
-  const seen = new Set<string>()
-  for (const item of await listAudioApps()) seen.add(item.exe)
-  return [...seen].sort((a, b) => a.localeCompare(b, 'tr'))
 }
 
 /*
@@ -56,7 +32,6 @@ export class AppAudioCapture {
   }
 
   async sync(
-    muted: string[],
     onData: (pid: number, chunk: Buffer) => void,
     onError: (message: string) => void,
     onGone: (pid: number) => void = () => undefined
@@ -67,20 +42,11 @@ export class AppAudioCapture {
       return false
     }
 
-    // One helper covering everything is both cheaper and complete: it also picks
-    // up apps that never register an audio session, which the per-app path
-    // cannot see.
-    const wanted = new Map<number, string[]>()
-    if (muted.length === 0) {
-      wanted.set(process.pid, ['--exclude', String(process.pid)])
-    } else {
-      const blocked = new Set(muted.map((name) => name.toLowerCase()))
-      for (const item of await listAudioApps()) {
-        if (!blocked.has(item.exe.toLowerCase())) {
-          wanted.set(item.pid, ['--include', String(item.pid)])
-        }
-      }
-    }
+    // Excluding our own tree captures everything else on the machine, including
+    // apps that never register an audio session.
+    const wanted = new Map<number, string[]>([
+      [process.pid, ['--exclude', String(process.pid)]]
+    ])
 
     for (const [pid, child] of this.children) {
       if (!wanted.has(pid)) {

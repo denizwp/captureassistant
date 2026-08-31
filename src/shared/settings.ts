@@ -30,7 +30,6 @@ export interface AudioSettings {
    * Executable names, not pids — pids change every launch. Empty means record
    * everything, which is also the cheapest path.
    */
-  mutedApps: string[]
   micEnabled: boolean
 
   micDeviceId: string | null
@@ -94,7 +93,6 @@ export const DEFAULT_SETTINGS: Settings = {
   audio: {
     systemEnabled: true,
     systemGain: 1,
-    mutedApps: [],
     micEnabled: false,
     micDeviceId: null,
     micGain: 1

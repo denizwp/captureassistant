@@ -1,4 +1,3 @@
-import { listAudioAppNames } from './app-audio'
 import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { readdir, rm, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
@@ -80,7 +79,6 @@ export function registerIpc(
 
   ipcMain.handle('audio:meter', (_e, enabled: boolean) => audio.setMetering(enabled))
 
-  ipcMain.handle('audio:apps', () => listAudioAppNames())
 
   ipcMain.handle('audio:devices', () => {
     audio.refreshDevices()

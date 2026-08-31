@@ -39,8 +39,6 @@ if (!singleInstance) {
     })
 
     const appAudio = new AppAudioCapture()
-    let appAudioKey = ''
-    let rescan: ReturnType<typeof setInterval> | null = null
 
     const applyAppAudio = async (): Promise<void> => {
       const config = store.get().audio
@@ -50,9 +48,7 @@ if (!singleInstance) {
         audio.useAppAudio(false)
         return
       }
-      const muted = config.mutedApps
       const active = await appAudio.sync(
-        muted,
         (pid, chunk) => audio.pushAppAudio(pid, chunk),
         (message) => {
           supervisor.note(`app audio: ${message}`)
@@ -69,20 +65,10 @@ if (!singleInstance) {
       // The capture page only handles the microphone now; system audio comes
       // from the helper, which sees it without Chromium's buffering in between.
       await audio.start({ ...config, systemEnabled: false })
-      appAudioKey = config.mutedApps.join(',')
       await applyAppAudio()
-      // Apps come and go mid-session, so keep checking which ones still need a
-      // helper rather than freezing the list at the moment recording started.
-      if (rescan === null && config.mutedApps.length > 0) {
-        rescan = setInterval(() => void applyAppAudio().catch(() => undefined), 5000)
-      }
     }
 
     const stopAudio = (): void => {
-      if (rescan !== null) {
-        clearInterval(rescan)
-        rescan = null
-      }
       appAudio.stop()
       audio.useAppAudio(false)
       audio.stop()
@@ -98,20 +84,6 @@ if (!singleInstance) {
       audio.setMic(config.micEnabled, config.micDeviceId, config.micGain)
       audio.setSystemGain(config.systemEnabled ? config.systemGain : 0)
       audio.setGains(0, config.micEnabled ? config.micGain : 0)
-
-      const key = config.mutedApps.join(',')
-      if (key === appAudioKey) return
-      appAudioKey = key
-
-      if (supervisor.getState().state === 'idle') return
-      await applyAppAudio()
-
-      if (config.mutedApps.length > 0 && rescan === null) {
-        rescan = setInterval(() => void applyAppAudio().catch(() => undefined), 5000)
-      } else if (config.mutedApps.length === 0 && rescan !== null) {
-        clearInterval(rescan)
-        rescan = null
-      }
     }
 
     if (process.argv.includes('--update-test')) {

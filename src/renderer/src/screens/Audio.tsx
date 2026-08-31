@@ -28,12 +28,8 @@ export function AudioScreen({
   const { audio } = settings
   const [devices, setDevices] = useState<{ id: string; label: string }[]>([])
   const [levels, setLevels] = useState({ system: FLOOR_DB, mic: FLOOR_DB })
-  const [apps, setApps] = useState<string[]>([])
 
   useEffect(() => {
-    void api.listAudioApps().then(setApps)
-    const timer = setInterval(() => void api.listAudioApps().then(setApps), 4000)
-    return () => clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -98,58 +94,6 @@ export function AudioScreen({
               control={
                 <div style={{ width: 220 }}>
                   <Meter db={levels.system} active={audio.systemEnabled} />
-                </div>
-              }
-            />
-            <Setting
-              stacked
-              label="Hangi uygulamaların sesi kaydedilsin"
-              hint={
-                apps.length === 0
-                  ? 'Şu anda ses çalan uygulama yok. Bir şey çalmaya başlayınca burada görünür.'
-                  : 'İşareti kaldırdığın uygulamalar kayda girmez. Hiçbirini kapatmazsan tüm sistem sesi kaydedilir.'
-              }
-              control={
-                <div className="applist">
-                  {apps.map((exe) => {
-                    const muted = audio.mutedApps.includes(exe)
-                    return (
-                      <label key={exe} className="applist__row">
-                        <input
-                          type="checkbox"
-                          checked={!muted}
-                          onChange={() =>
-                            patch({
-                              audio: {
-                                mutedApps: muted
-                                  ? audio.mutedApps.filter((name) => name !== exe)
-                                  : [...audio.mutedApps, exe]
-                              }
-                            })
-                          }
-                        />
-                        <span>{exe.replace(/\.exe$/i, '')}</span>
-                      </label>
-                    )
-                  })}
-                  {audio.mutedApps
-                    .filter((exe) => !apps.includes(exe))
-                    .map((exe) => (
-                      <label key={exe} className="applist__row applist__row--gone">
-                        <input
-                          type="checkbox"
-                          checked={false}
-                          onChange={() =>
-                            patch({
-                              audio: {
-                                mutedApps: audio.mutedApps.filter((name) => name !== exe)
-                              }
-                            })
-                          }
-                        />
-                        <span>{exe.replace(/\.exe$/i, '')} (kapalı)</span>
-                      </label>
-                    ))}
                 </div>
               }
             />
