@@ -44,10 +44,13 @@ export function QuickActions({
       <button
         type="button"
         className="btn btn--block btn--action btn--secondary"
-        disabled={!settings.replay.enabled || busy}
+        // Keyed off the engine rather than the stored setting: a setting left
+        // over from a previous session would otherwise leave this enabled with
+        // nothing behind it.
+        disabled={state.state !== 'armed'}
         title={
-          settings.replay.enabled
-            ? `Son ${formatDuration(settings.replay.durationSec)} dakikayı klip olarak kaydet`
+          armed
+            ? `Son ${formatDuration(settings.replay.durationSec)} kadarını klip olarak kaydet`
             : 'Önce geçmiş kaydı aç — kaydedilecek bir tampon yok.'
         }
         onClick={() => void api.saveReplay()}

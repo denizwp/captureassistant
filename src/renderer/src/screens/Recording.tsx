@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { DeepPartial } from '@shared/ipc'
 import type { CodecId, QualityPreset, Settings } from '@shared/settings'
+import type { SupervisorState } from '@shared/state'
 import { REPLAY_MAX_SEC, REPLAY_MIN_SEC, REPLAY_STEP_SEC } from '@shared/settings'
 import { api, type MonitorInfo } from '../api'
 import { estimateRingBytes, formatBytes, formatDuration } from '../format'
@@ -27,9 +28,11 @@ const CODECS: { value: CodecId; label: string; hint: string }[] = [
 
 export function RecordingScreen({
   settings,
+  state,
   patch
 }: {
   settings: Settings
+  state: SupervisorState
   patch: (next: DeepPartial<Settings>) => void
 }) {
   const [monitors, setMonitors] = useState<MonitorInfo[]>([])
@@ -59,8 +62,12 @@ export function RecordingScreen({
               control={
                 <Switch
                   label="Geçmiş kaydı aç"
-                  checked={replay.enabled}
-                  onChange={(enabled) => patch({ replay: { enabled } })}
+                  // Reflects what the engine is actually doing, not what the
+                  // settings file remembers — the two can disagree, and the
+                  // engine is the one telling the truth.
+                  checked={state.state !== 'idle'}
+                  disabled={state.state === 'assembling'}
+                  onChange={(enabled) => void api.toggleReplayBuffer(enabled)}
                 />
               }
             />

@@ -120,7 +120,9 @@ export function App() {
         </aside>
 
         {screen === 'clips' && <ClipsScreen />}
-        {screen === 'recording' && <RecordingScreen settings={settings} patch={patch} />}
+        {screen === 'recording' && (
+          <RecordingScreen settings={settings} state={state} patch={patch} />
+        )}
         {screen === 'audio' && <AudioScreen settings={settings} patch={patch} />}
         {screen === 'hotkeys' && <HotkeysScreen settings={settings} patch={patch} />}
         {screen === 'general' && <GeneralScreen settings={settings} patch={patch} />}
