@@ -1,6 +1,6 @@
 import { app, screen, utilityProcess } from 'electron'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { EventEmitter } from 'node:events'
 import type { Settings } from '@shared/settings'
 import { INITIAL_STATE, type SupervisorState } from '@shared/state'
@@ -50,7 +50,13 @@ export class SupervisorHost extends EventEmitter {
     this.settings = settings
     this.stopped = false
 
-    const entry = join(__dirname, 'supervisor.js')
+    // utilityProcess.fork needs a path it can actually open, and __dirname is
+    // inside app.asar in a packaged build. electron-builder puts a real copy in
+    // app.asar.unpacked for exactly this.
+    const entry = join(__dirname, 'supervisor.js').replace(
+      `${sep}app.asar${sep}`,
+      `${sep}app.asar.unpacked${sep}`
+    )
     const proc = utilityProcess.fork(entry, [], {
       serviceName: 'capture-supervisor',
       stdio: 'pipe'

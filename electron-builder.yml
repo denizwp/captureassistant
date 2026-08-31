@@ -25,16 +25,18 @@ asar: true
 asarUnpack:
   - '**/*.node'
   - '**/node_modules/uiohook-napi/**'
+  # utilityProcess.fork cannot load its entry from inside the archive.
+  - 'out/main/supervisor.js'
 
-# Portable rather than an installer: nothing here needs to touch the registry
-# or Program Files, and a self-extracting exe would unpack ~280MB of ffmpeg to
-# temp on every launch. Extract the zip once and run the exe.
+# Portable rather than an installer: nothing here needs the registry or Program
+# Files, and a self-extracting exe would unpack ~280MB of ffmpeg to temp on
+# every launch. The zip itself is built by scripts/pack-zip.mjs — see the note
+# there for why electron-builder's own zip target cannot run on this machine.
 win:
   target:
-    - target: zip
+    - target: dir
       arch: [x64]
   icon: build/icon.ico
-  artifactName: ${productName}-${version}-win-x64.${ext}
 
 publish:
   provider: github
