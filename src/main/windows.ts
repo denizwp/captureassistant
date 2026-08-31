@@ -1,8 +1,14 @@
 import { BrowserWindow, shell } from 'electron'
 import { join } from 'node:path'
+import { existsSync } from 'node:fs'
 import type { SettingsStore } from './store'
 
 const preload = join(__dirname, '../preload/index.js')
+
+/** Packaged builds ship `resources/` next to the app; in dev it sits at the
+ *  project root, two levels up from the bundled main process. */
+const packagedIcon = join(process.resourcesPath, 'icon.png')
+const icon = existsSync(packagedIcon) ? packagedIcon : join(__dirname, '../../resources/icon.png')
 
 /** electron-vite serves renderers from a dev server; in production they are
  *  static files next to the main bundle. */
@@ -23,6 +29,7 @@ export function createMainWindow(store: SettingsStore): BrowserWindow {
     minHeight: 600,
     show: false,
     frame: false,
+    icon,
     backgroundColor: store.get().app.theme === 'light' ? '#fbfbfb' : '#1a1a1a',
     webPreferences: {
       preload,

@@ -9,6 +9,7 @@ import { RecordingScreen } from './screens/Recording'
 import { AudioScreen } from './screens/Audio'
 import { HotkeysScreen } from './screens/Hotkeys'
 import { GeneralScreen } from './screens/General'
+import logo from '../assets/logo.png'
 
 const SCREENS = [
   { id: 'clips', label: 'Kayıtlar', icon: 'ph-film-strip' },
@@ -131,21 +132,10 @@ export function App() {
   )
 }
 
-/* The mark is a capture ring with a gap — a recording dot inside a frame that
-   is deliberately not closed, reading as "replay" rather than "record". */
 function Brand() {
   return (
     <div className="brand">
-      <svg className="brand__mark" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-        <path
-          className="mark__ring"
-          d="M10 2.25a7.75 7.75 0 1 1-6.4 3.38"
-          fill="none"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-        />
-        <circle className="mark__dot" cx="10" cy="10" r="3.4" />
-      </svg>
+      <img className="brand__mark" src={logo} alt="" aria-hidden="true" />
       <span className="brand__word">
         Capture <em>Assistant</em>
       </span>
