@@ -24,6 +24,9 @@ export function ffmpegPath(): string {
 export class SupervisorHost extends EventEmitter {
   private process: Electron.UtilityProcess | null = null
   private current: SupervisorState = INITIAL_STATE
+  private settings: Settings | null = null
+  private stopped = false
+  private restarts = 0
 
   getState(): SupervisorState {
     return this.current
@@ -35,6 +38,8 @@ export class SupervisorHost extends EventEmitter {
 
   start(settings: Settings): void {
     if (this.process) return
+    this.settings = settings
+    this.stopped = false
 
     const entry = join(__dirname, 'supervisor.js')
     const proc = utilityProcess.fork(entry, [], {
@@ -49,10 +54,29 @@ export class SupervisorHost extends EventEmitter {
       this.emit('log', { level: 'error', line: chunk.toString().trim() })
     })
 
-    proc.on('exit', () => {
+    proc.on('exit', (code) => {
       this.process = null
-      this.current = { ...INITIAL_STATE, lastError: 'Kayıt motoru beklenmedik şekilde kapandı.' }
+      if (this.stopped) return
+
+      // Whatever took it down, the app is deaf without it — no buffer, no
+      // hotkey does anything. Bring it back rather than leaving the user with
+      // a dead engine and a toast.
+      this.restarts += 1
+      const giveUp = this.restarts > 5
+      this.current = {
+        ...INITIAL_STATE,
+        lastError: giveUp
+          ? 'Kayıt motoru sürekli kapanıyor.'
+          : 'Kayıt motoru kapandı, yeniden başlatılıyor…'
+      }
       this.emit('state', this.current)
+      this.emit('log', { level: 'error', line: `supervisor exited (${code})` })
+
+      if (giveUp) return
+      setTimeout(() => {
+        const settings = this.settings
+        if (settings && !this.stopped) this.start(settings)
+      }, 1000 * this.restarts)
     })
 
     proc.on('message', (message: Record<string, unknown>) => this.receive(message))
@@ -90,6 +114,8 @@ export class SupervisorHost extends EventEmitter {
   }
 
   updateSettings(settings: Settings): void {
+    // Kept so a restart comes back configured the way the user left it.
+    this.settings = settings
     this.send({ type: 'settings', settings })
   }
 
@@ -106,6 +132,7 @@ export class SupervisorHost extends EventEmitter {
   }
 
   shutdown(): void {
+    this.stopped = true
     this.send({ type: 'shutdown' })
     this.process?.kill()
     this.process = null
