@@ -10,7 +10,9 @@
     "build": "npm run typecheck && electron-vite build",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "dist": "npm run build && electron-builder --win --publish never"
+    "dist": "npm run build && electron-builder --win --publish never",
+    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
+    "postinstall": "node scripts/fetch-ffmpeg.mjs"
   },
   "dependencies": {
     "uiohook-napi": "^1.5.4"
