@@ -14,12 +14,13 @@ interface InitMessage {
   ringDir: string
   outDir: string
   audioPipe: string
+  outputIdx: number
   settings: Settings
 }
 
 type Incoming =
   | InitMessage
-  | { type: 'settings'; settings: Settings }
+  | { type: 'settings'; settings: Settings; outputIdx?: number }
   | { type: 'arm'; enabled: boolean }
   | { type: 'record'; start: boolean }
   | { type: 'save-replay' }
@@ -32,6 +33,7 @@ let ffmpegPath = ''
 let ringDir = ''
 let outDir = ''
 let audioPipe = ''
+let outputIdx = 0
 let ring: Ring | null = null
 let encoder: EncoderChoice | null = null
 
@@ -93,7 +95,7 @@ async function startEncoder(): Promise<void> {
   const args = buildRingArgs({
     capture: settings.capture,
     encoder,
-    outputIdx: 0,
+    outputIdx,
     ringDir,
     startNumber: ring.nextSegmentNumber,
     drawMouse: true,
@@ -225,7 +227,7 @@ async function ensureEncoder(): Promise<boolean> {
   if (encoder || !settings) return !!encoder
 
   log('probing encoders…')
-  const captureError = await probeCapture(ffmpegPath, 0)
+  const captureError = await probeCapture(ffmpegPath, outputIdx)
   if (captureError) {
     fail(`Ekran yakalanamadı: ${captureError}`)
     return false
@@ -318,12 +320,26 @@ async function saveReplay(): Promise<void> {
   }
 
   await ring.poll()
-  const to = ring.newestEnd
-  if (to <= 0) {
+  if (ring.newestEnd <= 0) {
     toast('info', 'Tampon henüz doluyor — birkaç saniye bekle.')
     return
   }
 
+  // Keep recording for a moment past the keypress, then wait for the muxer to
+  // close a segment covering it. Without this the clip stops at the instant the
+  // key went down, which cuts the thing you pressed it for.
+  const postRoll = Math.max(0, settings.replay.postRollSec)
+  if (postRoll > 0) {
+    const target = ring.newestEnd + postRoll
+    const deadline = Date.now() + (postRoll + SEGMENT_SEC + 2) * 1000
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 250))
+      await ring.poll()
+      if (ring.newestEnd >= target) break
+    }
+  }
+
+  const to = ring.newestEnd
   const from = to - settings.replay.durationSec
   await buildClip(from, to, 'Klip')
 }
@@ -373,7 +389,16 @@ function fileName(label: string): string {
   const pad = (value: number): string => String(value).padStart(2, '0')
   const date = `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())}`
   const time = `${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`
-  return `${label} ${date} - ${time}`
+
+  const template = settings?.output.filenameTemplate?.trim() || '{app} {date} - {time}'
+  const name = template
+    .replace(/\{app\}/g, label)
+    .replace(/\{game\}/g, label)
+    .replace(/\{date\}/g, date)
+    .replace(/\{time\}/g, time)
+
+  // Anything Windows will not accept in a filename.
+  return name.replace(/[<>:"/\|?*]/g, '-').replace(/\s+/g, ' ').trim() || `${label} ${date}`
 }
 
 port?.on('message', (event) => {
@@ -389,6 +414,7 @@ async function handle(message: Incoming): Promise<void> {
       outDir = message.outDir
       audioPipe = message.audioPipe
       settings = message.settings
+      outputIdx = message.outputIdx
 
       await mkdir(ringDir, { recursive: true })
       const swept = await sweepOrphans(ringDir)
@@ -408,6 +434,15 @@ async function handle(message: Incoming): Promise<void> {
     case 'settings': {
       const previous = settings
       settings = message.settings
+      if (message.outputIdx !== undefined && message.outputIdx !== outputIdx) {
+        outputIdx = message.outputIdx
+        encoder = null
+        if (state !== 'idle') {
+          log(`display changed, restarting encoder on output ${outputIdx}`, 'warning')
+          await stopEncoder()
+          if (await ensureEncoder()) await startEncoder()
+        }
+      }
 
       if (previous && previous.capture.codec !== settings.capture.codec) encoder = null
 

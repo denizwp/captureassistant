@@ -1,10 +1,27 @@
-import { app, utilityProcess } from 'electron'
+import { app, screen, utilityProcess } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
 import type { Settings } from '@shared/settings'
 import { INITIAL_STATE, type SupervisorState } from '@shared/state'
 import { AUDIO_PIPE } from './audio'
+
+/**
+ * Electron gives display ids; ddagrab wants a DXGI output index. There is no
+ * API that maps between them, but DXGI enumerates outputs in desktop layout
+ * order, so position in a left-to-right, top-to-bottom sort is the closest
+ * thing to a mapping without a native module.
+ */
+export function outputIndexFor(monitorId: string | null): number {
+  const displays = [...screen.getAllDisplays()].sort(
+    (a, b) => a.bounds.x - b.bounds.x || a.bounds.y - b.bounds.y
+  )
+  if (!monitorId) {
+    const primary = screen.getPrimaryDisplay().id
+    return Math.max(0, displays.findIndex((d) => d.id === primary))
+  }
+  return Math.max(0, displays.findIndex((d) => String(d.id) === monitorId))
+}
 
 export function ffmpegPath(): string {
   const packaged = join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe')
@@ -74,6 +91,7 @@ export class SupervisorHost extends EventEmitter {
       ringDir: settings.replay.bufferDir ?? join(app.getPath('userData'), 'ring'),
       outDir: settings.output.dir ?? join(app.getPath('videos'), 'Capture Assistant'),
       audioPipe: AUDIO_PIPE,
+      outputIdx: outputIndexFor(settings.capture.monitorId),
       settings
     })
   }
@@ -102,7 +120,11 @@ export class SupervisorHost extends EventEmitter {
 
   updateSettings(settings: Settings): void {
     this.settings = settings
-    this.send({ type: 'settings', settings })
+    this.send({
+      type: 'settings',
+      settings,
+      outputIdx: outputIndexFor(settings.capture.monitorId)
+    })
   }
 
   arm(enabled: boolean): void {
