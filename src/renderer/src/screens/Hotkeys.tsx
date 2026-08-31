@@ -16,6 +16,27 @@ const BINDINGS: { key: keyof HotkeySettings; label: string; hint?: string }[] = 
 
 const MODIFIER_KEYS = new Set(['Control', 'Alt', 'Shift', 'Meta'])
 
+/*
+ * event.key cannot tell numpad keys apart from the main block — the numpad plus
+ * arrives as a bare "+", which Electron does not accept and which also breaks
+ * accelerator parsing since "+" is the separator. event.code can, and Electron
+ * spells these num0..num9 / numadd / numsub / nummult / numdiv / numdec.
+ */
+const NUMPAD: Record<string, string> = {
+  NumpadAdd: 'numadd',
+  NumpadSubtract: 'numsub',
+  NumpadMultiply: 'nummult',
+  NumpadDivide: 'numdiv',
+  NumpadDecimal: 'numdec',
+  NumpadEnter: 'Enter'
+}
+
+function numpadName(code: string): string | null {
+  if (NUMPAD[code]) return NUMPAD[code]
+  const digit = /^Numpad(\d)$/.exec(code)
+  return digit ? `num${digit[1]}` : null
+}
+
 function toAccelerator(event: KeyboardEvent): string | null {
   if (MODIFIER_KEYS.has(event.key)) return null
 
@@ -26,7 +47,8 @@ function toAccelerator(event: KeyboardEvent): string | null {
   if (event.metaKey) parts.push('Super')
 
   const key = event.key
-  const named =
+  const numpad = numpadName(event.code)
+  const named = numpad ??
     key.length === 1
       ? key.toUpperCase()
       : key === ' '
@@ -44,7 +66,7 @@ function toAccelerator(event: KeyboardEvent): string | null {
   parts.push(named)
 
   const isFunctionKey = /^F\d{1,2}$/.test(named)
-  if (parts.length === 1 && !isFunctionKey) return null
+  if (parts.length === 1 && !isFunctionKey && !numpad) return null
 
   return parts.join('+')
 }
