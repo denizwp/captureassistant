@@ -333,18 +333,6 @@
     padding: var(--space-4) var(--space-5) var(--space-6);
     scrollbar-width: thin;
 }
-.pane__body::-webkit-scrollbar { width: 10px; }
-.pane__body::-webkit-scrollbar-track { background: transparent; }
-.pane__body::-webkit-scrollbar-thumb {
-    background: var(--surface-fill);
-    border-radius: var(--radius-full);
-    border: 3px solid transparent;
-    background-clip: content-box;
-}
-.pane__body::-webkit-scrollbar-thumb:hover {
-    background: var(--text-inactive);
-    background-clip: content-box;
-}
 
 /* Background figure. `screen` is doing the work: against a near-black card the
    image's dark pixels contribute nothing, so only the light tones ghost
@@ -385,18 +373,53 @@
 }
 .empty__hint { font-size: var(--text-base); color: var(--text-subtle); max-width: 42ch; }
 
+
+/* ── Scrollbars ─────────────────────────────────────────────────────── */
+/* One treatment everywhere. The thumb is inset by a transparent border with
+   `background-clip: content-box`, which is what keeps it visually narrower
+   than its hit area — the track stays easy to grab without a heavy bar. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--surface-fill) transparent;
+}
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--surface-fill);
+    border-radius: var(--radius-full);
+    border: 4px solid transparent;
+    background-clip: content-box;
+    min-height: 32px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-inactive);
+    background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:active {
+    background: var(--text-subtle);
+    background-clip: content-box;
+}
+/* Buttons are on by default in Chromium's non-overlay scrollbar. */
+::-webkit-scrollbar-button { display: none; }
+
 /* ── App shell root ─────────────────────────────────────────────────── */
-/* The source wrapped its dashboard in a page element; here the body is the
-   column itself: appbar / shell / statusbar. */
-body { display: flex; flex-direction: column; }
+/* The source wrapped its dashboard in a page element; React's mount point is
+   that element here. It has to carry the height constraint itself — a plain
+   block div would grow with its content, the pane would never hit a max
+   height, and `.pane__body`'s overflow would never engage: the whole page
+   would scroll instead of the panel, dragging the statusbar off the bottom. */
+#root {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    min-height: 0;
+}
 
 /* ── Brand lockup ───────────────────────────────────────────────────── */
 /* Ported from the source (lines 436-448); only the mark's part names differ. */
 .brand { display: inline-flex; align-items: center; gap: var(--space-2-5); }
-.brand__mark { display: block; flex-shrink: 0; }
-/* Set via CSS rather than presentation attributes so the token resolves. */
-.brand__mark .mark__ring { stroke: var(--brand); }
-.brand__mark .mark__dot { fill: var(--brand-deep); }
+.brand__mark { display: block; flex-shrink: 0; width: 22px; height: 22px; }
 .brand__word {
     font-size: var(--text-lg);
     font-weight: var(--fw-semibold);
