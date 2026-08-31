@@ -1,0 +1,407 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Components the source design system does not have.
+   Everything here is built from the existing tokens and follows the same
+   two rules as the ported CSS: borders are inset rings, not `border`, and
+   press does not shrink or darken.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Titlebar ───────────────────────────────────────────────────────── */
+/* The appbar doubles as the drag region, so the window has no OS frame. */
+.appbar { -webkit-app-region: drag; }
+.appbar button,
+.appbar .segmented,
+.appbar input { -webkit-app-region: no-drag; }
+
+.wincontrols { display: flex; align-items: center; gap: 2px; }
+.wincontrols button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 26px;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-subtle);
+    font-size: 14px;
+    cursor: pointer;
+}
+.wincontrols button:hover { background: var(--surface-tint); color: var(--text-default); }
+.wincontrols button.is-close:hover { background: var(--danger); color: #fff; }
+
+/* ── Nav ────────────────────────────────────────────────────────────── */
+.nav { display: grid; gap: 2px; }
+.nav__item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2-5);
+    width: 100%;
+    min-height: var(--row-h);
+    padding: 0 var(--space-2-5);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-subtle);
+    font: inherit;
+    font-size: var(--text-base);
+    letter-spacing: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.nav__item .ph { font-size: 16px; }
+.nav__item:hover { background: var(--surface-tint); color: var(--text-default); }
+.nav__item.is-active {
+    background: var(--surface-tint);
+    color: var(--text-default);
+    font-weight: var(--fw-medium);
+}
+/* The accent earns its place here: one 2px bar marks the active screen. */
+.nav__item.is-active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    width: 2px;
+    height: 16px;
+    border-radius: var(--radius-full);
+    background: var(--brand);
+}
+
+/* ── Switch ─────────────────────────────────────────────────────────── */
+.switch {
+    position: relative;
+    flex-shrink: 0;
+    width: 34px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-full);
+    background: var(--surface-fill);
+    box-shadow: var(--ring-hairline);
+    cursor: pointer;
+    transition: background var(--duration-fast) var(--ease-out);
+}
+.switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-full);
+    background: var(--surface-base);
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--duration-fast) var(--ease-out);
+}
+.switch[aria-checked="true"] { background: var(--brand); box-shadow: none; }
+.switch[aria-checked="true"]::after { transform: translateX(14px); background: #fff; }
+.switch:focus-visible { box-shadow: inset 0 0 0 2px var(--brand); }
+.switch:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Slider ─────────────────────────────────────────────────────────── */
+/* The track is a gradient on the input itself so the fill follows the thumb
+   without a wrapper element. --fill is set inline from React. */
+.slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 20px;
+    background: transparent;
+    cursor: pointer;
+}
+.slider::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: linear-gradient(
+        to right,
+        var(--brand) 0 var(--fill, 0%),
+        var(--surface-fill) var(--fill, 0%) 100%
+    );
+}
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border-radius: var(--radius-full);
+    background: var(--surface-base);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line);
+}
+.slider:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--brand), transparent 60%);
+}
+.slider:disabled { opacity: .5; cursor: not-allowed; }
+
+.slider-row { display: flex; align-items: center; gap: var(--space-3); }
+.slider-row__value { min-width: 56px; text-align: right; color: var(--text-default); }
+
+/* ── Setting row ────────────────────────────────────────────────────── */
+/* Label and description left, control right. Nearly every settings line in
+   the app takes this shape. */
+.setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-3) 0;
+}
+.setting + .setting { border-top: 1px solid var(--hairline); }
+.setting__text { display: grid; gap: 2px; min-width: 0; }
+.setting__hint { font-size: var(--text-sm); color: var(--text-subtle); }
+.setting__control { flex-shrink: 0; display: flex; align-items: center; gap: var(--space-2); }
+
+.setting--stacked { display: grid; gap: var(--space-3); align-items: stretch; }
+
+.section { display: grid; }
+.section + .section { margin-top: var(--space-6); }
+.section__title {
+    margin-bottom: var(--space-1);
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    color: var(--text-default);
+}
+.section__note {
+    margin-top: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-subtle);
+}
+
+/* ── Hotkey capture ─────────────────────────────────────────────────── */
+.hotkey {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    min-width: 150px;
+    height: var(--control-h-base);
+    padding: 0 var(--space-3);
+    border: 0;
+    border-radius: var(--radius-lg);
+    background: var(--surface-control);
+    color: var(--text-default);
+    box-shadow: var(--ring-line);
+    font: inherit;
+    cursor: pointer;
+}
+.hotkey:hover { background: var(--surface-tint); }
+.hotkey.is-listening {
+    box-shadow: inset 0 0 0 1.5px var(--brand);
+    color: var(--text-subtle);
+}
+.hotkey.is-conflict { box-shadow: inset 0 0 0 1px var(--danger); }
+
+/* ── Path row ───────────────────────────────────────────────────────── */
+.pathrow { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.pathrow__value {
+    flex: 1;
+    min-width: 0;
+    height: var(--control-h-base);
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-lg);
+    background: var(--surface-recessed);
+    box-shadow: var(--ring-hairline);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    letter-spacing: normal;
+    color: var(--text-subtle);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── Toast ──────────────────────────────────────────────────────────── */
+.toasts {
+    position: fixed;
+    right: var(--space-5);
+    bottom: calc(var(--statusbar-h) + var(--space-4));
+    z-index: 200;
+    display: grid;
+    gap: var(--space-2);
+    justify-items: end;
+    pointer-events: none;
+}
+.toast {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2-5);
+    max-width: 380px;
+    padding: var(--space-2-5) var(--space-3-5);
+    border-radius: var(--radius-lg);
+    background: var(--surface-base);
+    box-shadow: var(--shadow-lg), var(--ring-line);
+    font-size: var(--text-base);
+    animation: toast-in var(--duration-base) var(--ease-out);
+}
+.toast .ph { font-size: 16px; }
+.toast--success .ph { color: var(--success); }
+.toast--warning .ph { color: var(--warning); }
+.toast--error   .ph { color: var(--danger); }
+.toast--info    .ph { color: var(--text-info); }
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(6px); }
+}
+
+/* ── Clip gallery ───────────────────────────────────────────────────── */
+.gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+    gap: var(--space-3-5);
+}
+.clip {
+    display: grid;
+    gap: var(--space-2);
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.clip__thumb {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius-lg);
+    background: var(--surface-recessed);
+    box-shadow: var(--ring-line);
+    overflow: hidden;
+}
+.clip__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.clip:hover .clip__thumb { box-shadow: inset 0 0 0 1px var(--brand); }
+.clip__duration {
+    position: absolute;
+    right: var(--space-1-5);
+    bottom: var(--space-1-5);
+    padding: 1px var(--space-1-5);
+    border-radius: var(--radius-sm);
+    background: oklch(0% 0 0 / .7);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: normal;
+}
+.clip__name {
+    font-size: var(--text-base);
+    color: var(--text-default);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.clip__meta { font-size: var(--text-sm); color: var(--text-subtle); }
+
+/* ── Content pane ───────────────────────────────────────────────────── */
+/* Same card recipe as the sidebar so the two panels read as a matched pair,
+   exactly as the source shell does. */
+.pane {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--radius-lg);
+    background: var(--surface-base);
+    box-shadow: var(--shadow-xs), var(--ring-line);
+    overflow: hidden;
+    position: relative;
+    isolation: isolate;   /* keeps the art's blend inside this card */
+}
+.pane__header {
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 0 var(--space-4);
+    border-bottom: 1px solid var(--hairline);
+}
+.pane__title {
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    color: var(--text-default);
+}
+.pane__body {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-4) var(--space-5) var(--space-6);
+    scrollbar-width: thin;
+}
+.pane__body::-webkit-scrollbar { width: 10px; }
+.pane__body::-webkit-scrollbar-track { background: transparent; }
+.pane__body::-webkit-scrollbar-thumb {
+    background: var(--surface-fill);
+    border-radius: var(--radius-full);
+    border: 3px solid transparent;
+    background-clip: content-box;
+}
+.pane__body::-webkit-scrollbar-thumb:hover {
+    background: var(--text-inactive);
+    background-clip: content-box;
+}
+
+/* Background figure. `screen` is doing the work: against a near-black card the
+   image's dark pixels contribute nothing, so only the light tones ghost
+   through. The left fade dissolves it into the card and also buries the
+   render-site watermark baked into the source image's top-left corner. */
+.pane__art {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    height: 100%;
+    width: auto;
+    max-width: none;
+    z-index: 0;
+    opacity: .18;
+    mix-blend-mode: screen;
+    pointer-events: none;
+    user-select: none;
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, transparent 26%, #000 72%);
+    mask-image: linear-gradient(to right, transparent 0%, transparent 26%, #000 72%);
+}
+/* `screen` assumes a dark ground; on light mode the figure would blow out. */
+:root:not([data-mode="dark"]) .pane__art { mix-blend-mode: multiply; opacity: .10; }
+
+/* ── Empty state ────────────────────────────────────────────────────── */
+.empty {
+    height: 100%;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: var(--space-3);
+    text-align: center;
+    padding: var(--space-8);
+}
+.empty__title {
+    font-size: var(--text-lg);
+    font-weight: var(--fw-semibold);
+    color: var(--text-strong);
+}
+.empty__hint { font-size: var(--text-base); color: var(--text-subtle); max-width: 42ch; }
+
+/* ── App shell root ─────────────────────────────────────────────────── */
+/* The source wrapped its dashboard in a page element; here the body is the
+   column itself: appbar / shell / statusbar. */
+body { display: flex; flex-direction: column; }
+
+/* ── Brand lockup ───────────────────────────────────────────────────── */
+/* Ported from the source (lines 436-448); only the mark's part names differ. */
+.brand { display: inline-flex; align-items: center; gap: var(--space-2-5); }
+.brand__mark { display: block; flex-shrink: 0; }
+/* Set via CSS rather than presentation attributes so the token resolves. */
+.brand__mark .mark__ring { stroke: var(--brand); }
+.brand__mark .mark__dot { fill: var(--brand-deep); }
+.brand__word {
+    font-size: var(--text-lg);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-tight);
+    color: var(--text-strong);
+    white-space: nowrap;
+}
+.brand__word em { font-style: normal; font-weight: var(--fw-normal); color: var(--text-subtle); }

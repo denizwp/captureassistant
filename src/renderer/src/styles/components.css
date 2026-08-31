@@ -1,0 +1,425 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Components — ported verbatim from biskuvu/eira_design.html.
+   Controls (253-431) + app shell (566-770) + segmented control (775-806).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Button ─────────────────────────────────────────────────────────── */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+    border: 0;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: var(--fw-medium);
+    letter-spacing: inherit;
+    user-select: none;
+    box-shadow: var(--shadow-xs);
+    height: var(--control-h-base);
+    gap: var(--space-1-5);
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-base);
+}
+.btn:focus-visible { box-shadow: inset 0 0 0 2px var(--brand); }
+.btn:disabled { cursor: not-allowed; opacity: .5; color: var(--text-subtle); }
+.btn--lg { height: var(--control-h-lg); padding: 0 var(--space-4); gap: var(--space-2); }
+.btn--sm { height: var(--control-h-sm); padding: 0 var(--space-2); gap: var(--space-1); font-size: var(--text-xs); border-radius: var(--radius-md); }
+.btn--block { width: 100%; }
+
+/* Emphasis fills: the one gradient in the system, derived from the accent */
+.btn--emphasis { overflow: hidden; color: #fff; }
+.btn__fill  { position: absolute; inset: 0; border-radius: inherit; }
+.btn__label { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); }
+
+.btn--primary { box-shadow: var(--shadow-xs), inset 0 0 0 1px var(--btn-brand-ring); }
+.btn--primary .btn__fill {
+    background: linear-gradient(to bottom, var(--btn-brand-start), var(--brand));
+    box-shadow: inset 0 1px 0 0 var(--btn-brand-bg);
+}
+.btn--primary:hover .btn__fill { background: linear-gradient(to bottom, var(--btn-brand-bg), var(--brand)); }
+
+.btn--destructive { box-shadow: var(--shadow-xs), inset 0 0 0 1px var(--btn-danger-ring); }
+.btn--destructive .btn__fill {
+    background: linear-gradient(to bottom, var(--btn-danger-start), var(--danger));
+    box-shadow: inset 0 1px 0 0 var(--btn-danger-bg);
+}
+.btn--destructive:hover .btn__fill { background: linear-gradient(to bottom, var(--btn-danger-bg), var(--danger)); }
+
+.btn--secondary {
+    background: var(--surface-base);
+    color: var(--text-default);
+    box-shadow: var(--shadow-xs), var(--ring-line);
+}
+.btn--secondary:not(:disabled):hover { background: var(--surface-tint); }
+
+.btn--ghost { background: transparent; color: var(--text-subtle); box-shadow: none; }
+.btn--ghost:not(:disabled):hover { background: var(--surface-tint); color: var(--text-default); }
+
+/* Press does not shrink or darken — the surface holds position. */
+
+/* ── Keycap ─────────────────────────────────────────────────────────── */
+.kbd {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--hairline);
+    background: var(--surface-control);
+    padding: 1px var(--space-1-5);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: normal;
+    color: var(--text-subtle);
+}
+
+/* ── Field / Label / Input ──────────────────────────────────────────── */
+.field { display: grid; gap: var(--space-2); }
+.label {
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    color: var(--text-default);
+    user-select: none;
+}
+.field__error { font-size: var(--text-sm); line-height: 1.375; color: var(--text-danger); }
+
+.input {
+    width: 100%;
+    height: var(--control-h-lg);
+    padding: 0 var(--space-4);
+    border: 0;
+    border-radius: var(--radius-lg);
+    background: var(--surface-control);
+    color: var(--text-default);
+    box-shadow: var(--ring-line);
+    outline: none;
+    font-family: inherit;
+    font-size: var(--text-base);
+}
+.input::placeholder { color: var(--text-placeholder); }
+.input:focus { box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--focus), transparent 50%); }
+.input--mono { font-family: var(--font-mono); letter-spacing: normal; }
+.input--error { box-shadow: inset 0 0 0 1px var(--danger); }
+
+/* ── Select — trigger + popup listbox, not a native <select> ────────── */
+.select { position: relative; }
+
+.select__trigger {
+    width: 100%;
+    justify-content: space-between;
+    font-weight: var(--fw-normal);
+}
+.select__icon { color: var(--text-subtle); font-size: 14px; }
+.select__value[data-placeholder] { color: var(--text-placeholder); }
+
+.select__popup {
+    position: absolute;
+    top: calc(100% + var(--space-1));
+    left: 0;
+    right: 0;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: var(--space-1-5) 0;
+    border-radius: var(--radius-lg);
+    background: var(--surface-base);
+    color: var(--text-default);
+    box-shadow: var(--shadow-lg), var(--ring-line);
+}
+.select__popup[hidden] { display: none; }
+
+.select__option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin: 0 var(--space-1-5);
+    border: 0;
+    border-radius: var(--radius-sm);
+    padding: var(--space-1-5) var(--space-2);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--text-base);
+    letter-spacing: inherit;
+    text-align: left;
+    cursor: pointer;
+    outline: none;
+}
+.select__option:hover,
+.select__option:focus { background: var(--surface-tint); }
+.select__option .ph-check { font-size: 14px; color: var(--text-subtle); visibility: hidden; }
+.select__option[aria-selected="true"] .ph-check { visibility: visible; }
+
+/* ── Badge (dot variant carries status) ─────────────────────────────── */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    flex-shrink: 0;
+    border-radius: var(--radius-full);
+    padding: 2px var(--space-2);
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    line-height: 1.3333;
+    white-space: nowrap;
+    background: transparent;
+    color: var(--text-default);
+    box-shadow: var(--ring-hairline);
+}
+.badge--muted { color: var(--text-subtle); }
+.badge__dot { width: 7px; height: 7px; border-radius: var(--radius-full); flex-shrink: 0; }
+.badge__dot--success { background: var(--success); }
+.badge__dot--neutral { background: var(--neutral-dot); }
+
+/* ── Card ───────────────────────────────────────────────────────────── */
+.card {
+    border-radius: var(--radius-lg);
+    background: var(--surface-base);
+    box-shadow: var(--shadow-xs), var(--ring-line);
+    overflow: hidden;
+}
+
+/* ── Dashboard shell ────────────────────────────────────────────────── */
+#dashboard-page { flex-direction: column; }
+
+.appbar {
+    height: var(--header-h);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: 0 var(--space-4);
+    background: var(--surface-base);
+    border-bottom: 1px solid var(--line);
+}
+.appbar__meta { display: flex; align-items: center; gap: var(--space-3); }
+.appbar__user {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    font-size: var(--text-sm);
+    color: var(--text-subtle);
+}
+.appbar__user .ph { font-size: 14px; opacity: .6; }
+
+/* The shell owns the inset and the gutter — both panels inherit the same
+   top/bottom edge from it. */
+.shell {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    gap: var(--space-5);
+    padding: var(--space-5);
+    background: var(--surface-canvas);
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────── */
+/* Same card recipe as the console, so the two panels align top and bottom
+   and read as a matched pair rather than a rail plus a card. */
+.sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-base);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xs), var(--ring-line);
+    overflow: hidden;
+}
+.sidebar__scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-3) var(--space-3-5);
+    scrollbar-width: thin;
+}
+.sidebar__group + .sidebar__group { margin-top: var(--space-6); }
+/* Same role as a field label, so it takes the same type — see .label */
+.sidebar__group-label {
+    margin: 0 0 var(--space-2);
+    padding: 0;
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    color: var(--text-default);
+}
+.sidebar__stack { display: grid; gap: var(--space-2-5); }
+
+/* Status rows: label left, dot badge right — proximity does the grouping */
+.status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-height: var(--row-h);
+    padding: 0;
+    font-size: var(--text-base);
+}
+.status-row__label { color: var(--text-subtle); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-list { display: grid; }
+.status-list .status-row + .status-row { border-top: 1px solid var(--hairline); }
+
+.sidebar__footer {
+    flex-shrink: 0;
+    border-top: 1px solid var(--line);
+    padding: var(--space-3) var(--space-4);
+    display: grid;
+    gap: var(--space-1-5);
+}
+.meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+}
+.meta-row dt { color: var(--text-subtle); }
+.meta-row dd { margin: 0; color: var(--text-default); }
+.meta-row dd .ph-check { color: var(--success); font-size: 14px; }
+
+/* ── Content / console ──────────────────────────────────────────────── */
+.content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.console {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--radius-lg);
+    background: var(--surface-base);
+    box-shadow: var(--shadow-xs), var(--ring-line);
+    overflow: hidden;
+    position: relative;
+    isolation: isolate;   /* keeps the art's blend inside this card */
+}
+
+/* Background figure. `screen` is doing the work: against a near-black card
+   the image's dark pixels contribute nothing, so only the light tones ghost
+   through — and it stays correct whether the source is a cutout or has a
+   black matte baked in. The left fade dissolves it into the card and also
+   buries the render-site watermark in the image's top-left corner. */
+.console__art {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    height: 100%;
+    width: auto;
+    max-width: none;
+    z-index: 0;
+    opacity: .18;
+    mix-blend-mode: screen;
+    pointer-events: none;
+    user-select: none;
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, transparent 26%, #000 72%);
+    mask-image: linear-gradient(to right, transparent 0%, transparent 26%, #000 72%);
+}
+
+/* Log and header ride above the art */
+.console__header, .console__body { position: relative; z-index: 1; }
+.console__header {
+    flex-shrink: 0;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 0 var(--space-2) 0 var(--space-4);
+    border-bottom: 1px solid var(--hairline);
+}
+.console__title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    color: var(--text-default);
+}
+.console__title .ph { font-size: 16px; color: var(--text-subtle); }
+
+.console__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-3) var(--space-4);
+    background: transparent;   /* one plane with the card — the ring is the edge */
+    font-family: var(--font-mono);
+    letter-spacing: normal;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--text-subtle);
+}
+.console__body::-webkit-scrollbar { width: 10px; }
+.console__body::-webkit-scrollbar-track { background: transparent; }
+.console__body::-webkit-scrollbar-thumb {
+    background: var(--surface-fill);
+    border-radius: var(--radius-full);
+    border: 3px solid transparent;
+    background-clip: content-box;
+}
+.console__body::-webkit-scrollbar-thumb:hover { background: var(--text-inactive); background-clip: content-box; }
+
+.log { white-space: pre-wrap; word-break: break-word; }
+.log.is-dim     { color: var(--text-subtle); }
+.log.is-info    { color: var(--text-info); }
+.log.is-success { color: var(--success); }
+.log.is-warning { color: var(--text-warning); }
+.log.is-error   { color: var(--text-danger); }
+
+/* ── Status bar ─────────────────────────────────────────────────────── */
+.statusbar {
+    height: var(--statusbar-h);
+    flex-shrink: 0;
+    position: relative;   /* paints over the peeker, clipping it at the edge */
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: 0 var(--space-4);
+    background: var(--surface-base);
+    border-top: 1px solid var(--line);
+    font-size: var(--text-xs);
+    color: var(--text-subtle);
+}
+
+/* ── Segmented control ──────────────────────────────────────────────── */
+/* Source calls this .preview-switch and marks it designer-only; the CSS is
+   a proper segmented control, renamed and reused for quality presets. */
+.segmented {
+    display: inline-flex;
+    align-self: start;
+    height: var(--control-h-base);
+    padding: 0 2px;
+    border-radius: var(--radius-lg);
+    background: var(--surface-recessed);
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--hairline), transparent 30%);
+}
+.segmented button {
+    margin: 2px 0;
+    padding: 0 var(--space-2-5);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-subtle);
+    font: inherit;
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.segmented button:hover { color: var(--text-default); }
+.segmented button.is-active {
+    background: var(--surface-base);
+    color: var(--text-default);
+    box-shadow: var(--shadow-sm), var(--ring-line);
+}

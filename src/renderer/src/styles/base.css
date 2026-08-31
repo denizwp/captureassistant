@@ -1,0 +1,37 @@
+/* Base — ported from biskuvu/eira_design.html (lines 213-247). */
+
+* { box-sizing: border-box; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+html {
+    letter-spacing: var(--tracking-body);
+    line-height: 1.5;
+    font-feature-settings: var(--font-features);
+}
+
+body {
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    color: var(--text-default);
+    background: var(--surface-canvas);
+}
+
+h1, h2, h3 { margin: 0; font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight); }
+p { margin: 0; }
+:focus-visible { outline: none; }
+
+.mono {
+    font-family: var(--font-mono);
+    letter-spacing: normal;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Phosphor glyphs align to the first line of adjacent text, not the block */
+.ph, [class^="ph-"], [class*=" ph-"] {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+    flex-shrink: 0;
+}
