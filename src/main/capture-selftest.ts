@@ -49,7 +49,8 @@ async function durationOf(path: string): Promise<number | null> {
 export async function runCaptureSelfTest(
   supervisor: SupervisorHost,
   audio: AudioEngine,
-  store: SettingsStore
+  store: SettingsStore,
+  startAudio: () => Promise<void>
 ): Promise<void> {
   const logPath = join(app.getPath('temp'), 'ca-capture-selftest.log')
   writeFileSync(logPath, '')
@@ -92,7 +93,8 @@ export async function runCaptureSelfTest(
     await audio.listen()
     log('DELIBERATELY serving an empty audio pipe, expecting a silent fallback')
   } else {
-    await audio.start(settings.audio)
+    // The same path the app uses, so the test exercises the real audio wiring.
+    await startAudio()
   }
   log('arming')
   supervisor.arm(true)

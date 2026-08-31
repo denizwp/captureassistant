@@ -38,55 +38,37 @@ if (!singleInstance) {
       callback(permission === 'media')
     })
 
-    if (process.argv.includes('--update-test')) {
-      await runUpdateSelfTest()
-      app.quit()
-      return
-    }
-
-    if (process.argv.includes('--audio-test')) {
-      await runAudioSelfTest(audio, store)
-      app.quit()
-      return
-    }
-
-    if (process.argv.includes('--capture-test')) {
-      await runCaptureSelfTest(supervisor, audio, store)
-      supervisor.shutdown()
-      await audio.close()
-      app.quit()
-      return
-    }
-
-    supervisor.start(store.get())
-
-    const startHidden = process.argv.includes('--hidden')
-    let window = createMainWindow(store, { show: !startHidden })
-    showWindow = (): void => {
-      if (window.isDestroyed()) window = createMainWindow(store)
-      if (window.isMinimized()) window.restore()
-      window.show()
-      window.focus()
-    }
-
     const appAudio = new AppAudioCapture()
     let appAudioKey = ''
     let rescan: ReturnType<typeof setInterval> | null = null
 
     const applyAppAudio = async (): Promise<void> => {
-      const muted = store.get().audio.mutedApps
+      const config = store.get().audio
+      audio.setSystemGain(config.systemEnabled ? config.systemGain : 0)
+      if (!config.systemEnabled) {
+        appAudio.stop()
+        audio.useAppAudio(false)
+        return
+      }
+      const muted = config.mutedApps
       const active = await appAudio.sync(
         muted,
         (pid, chunk) => audio.pushAppAudio(pid, chunk),
-        (message) => broadcast('toast', { kind: 'warning', message }),
+        (message) => {
+          supervisor.note(`app audio: ${message}`)
+          broadcast('toast', { kind: 'warning', message })
+        },
         (pid) => audio.dropAppAudio(pid)
       )
+      supervisor.note(`system audio helpers: ${active ? 'running' : 'none'}`)
       audio.useAppAudio(active)
     }
 
     const startAudio = async (): Promise<void> => {
       const config = store.get().audio
-      await audio.start(config)
+      // The capture page only handles the microphone now; system audio comes
+      // from the helper, which sees it without Chromium's buffering in between.
+      await audio.start({ ...config, systemEnabled: false })
       appAudioKey = config.mutedApps.join(',')
       await applyAppAudio()
       // Apps come and go mid-session, so keep checking which ones still need a
@@ -114,10 +96,8 @@ if (!singleInstance) {
     const syncAudio = async (): Promise<void> => {
       const config = store.get().audio
       audio.setMic(config.micEnabled, config.micDeviceId, config.micGain)
-      audio.setGains(
-        config.systemEnabled ? config.systemGain : 0,
-        config.micEnabled ? config.micGain : 0
-      )
+      audio.setSystemGain(config.systemEnabled ? config.systemGain : 0)
+      audio.setGains(0, config.micEnabled ? config.micGain : 0)
 
       const key = config.mutedApps.join(',')
       if (key === appAudioKey) return
@@ -132,6 +112,37 @@ if (!singleInstance) {
         clearInterval(rescan)
         rescan = null
       }
+    }
+
+    if (process.argv.includes('--update-test')) {
+      await runUpdateSelfTest()
+      app.quit()
+      return
+    }
+
+    if (process.argv.includes('--audio-test')) {
+      await runAudioSelfTest(audio, store)
+      app.quit()
+      return
+    }
+
+    if (process.argv.includes('--capture-test')) {
+      await runCaptureSelfTest(supervisor, audio, store, startAudio)
+      supervisor.shutdown()
+      await audio.close()
+      app.quit()
+      return
+    }
+
+    supervisor.start(store.get())
+
+    const startHidden = process.argv.includes('--hidden')
+    let window = createMainWindow(store, { show: !startHidden })
+    showWindow = (): void => {
+      if (window.isDestroyed()) window = createMainWindow(store)
+      if (window.isMinimized()) window.restore()
+      window.show()
+      window.focus()
     }
 
     const actions = {
@@ -156,10 +167,7 @@ if (!singleInstance) {
           audio: { micEnabled: !store.get().audio.micEnabled }
         })
         audio.setMic(next.audio.micEnabled, next.audio.micDeviceId, next.audio.micGain)
-        audio.setGains(
-          next.audio.systemEnabled ? next.audio.systemGain : 0,
-          next.audio.micEnabled ? next.audio.micGain : 0
-        )
+        audio.setGains(0, next.audio.micEnabled ? next.audio.micGain : 0)
 
         supervisor.updateSettings(next)
         broadcast('settings', next)

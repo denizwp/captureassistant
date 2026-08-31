@@ -152,6 +152,10 @@ export class SupervisorHost extends EventEmitter {
     })
   }
 
+  note(line: string): void {
+    this.emit('log', { level: 'info', line })
+  }
+
   arm(enabled: boolean): void {
     trace(`arm(${enabled}) process=${this.process ? 'alive' : 'null'}`)
     this.send({ type: 'arm', enabled })

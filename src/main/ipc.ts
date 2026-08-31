@@ -38,7 +38,10 @@ export function registerIpc(
 
   supervisor.on('state', (state) => broadcast('state', state))
   supervisor.on('toast', (toast) => broadcast('toast', toast))
-  audio.on('levels', (levels) => broadcast('levels', levels))
+  audio.on('levels', (levels) => {
+    const payload = levels as { system: number; mic: number }
+    broadcast('levels', { ...payload, system: audio.takeSystemPeak() })
+  })
   audio.on('status', (payload: { running: boolean; error?: string }) => {
     if (payload.error) {
       broadcast('toast', { kind: 'warning', message: `Ses yakalanamadı: ${payload.error}` })

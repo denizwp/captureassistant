@@ -27,6 +27,8 @@ export class AudioEngine extends EventEmitter {
   private devices: MicDevice[] = []
   private appAudio = new Map<number, Buffer>()
   private appAudioActive = false
+  private systemGain = 1
+  private systemPeak = 0
 
 
   constructor(private readonly preload = join(__dirname, '../preload/audio.js')) {
@@ -48,6 +50,17 @@ export class AudioEngine extends EventEmitter {
   private static readonly MAX_PENDING_BLOCKS = 5
 
   private static readonly MAX_QUEUE_BYTES = 48_000 * 2 * 4 * 0.2
+
+  setSystemGain(gain: number): void {
+    this.systemGain = Math.max(0, gain)
+  }
+
+  /* Feeds the meter, since these samples never pass through the capture page. */
+  takeSystemPeak(): number {
+    const peak = this.systemPeak
+    this.systemPeak = 0
+    return peak > 0 ? Math.max(-100, 20 * Math.log10(peak)) : -100
+  }
 
   useAppAudio(active: boolean): void {
     this.appAudioActive = active
@@ -87,8 +100,12 @@ export class AudioEngine extends EventEmitter {
         left += take.readFloatLE(at)
         right += take.readFloatLE(at + 4)
       }
-      block.writeFloatLE(Math.max(-1, Math.min(1, left)), i * 16)
-      block.writeFloatLE(Math.max(-1, Math.min(1, right)), i * 16 + 4)
+      left = Math.max(-1, Math.min(1, left * this.systemGain))
+      right = Math.max(-1, Math.min(1, right * this.systemGain))
+      const loudest = Math.max(Math.abs(left), Math.abs(right))
+      if (loudest > this.systemPeak) this.systemPeak = loudest
+      block.writeFloatLE(left, i * 16)
+      block.writeFloatLE(right, i * 16 + 4)
     }
     return block
   }

@@ -39,18 +39,20 @@ export async function listAudioAppNames(): Promise<string[]> {
 }
 
 /*
- * Process loopback aims at one process tree per call, so covering "everything
- * except these" means running a helper for each app we do want and adding the
- * streams up. With nothing muted there is nothing to work around, and the
- * ordinary loopback stays in charge — it also picks up apps that never register
- * a session, which this path cannot see.
+ * All system audio comes through here rather than Chromium's loopback. Chromium
+ * buffers around 200ms before we ever see a sample and ffmpeg stamps audio when
+ * it arrives, so that delay lands in the recording with no way to take it back
+ * out downstream. WASAPI hands us the same audio a frame or two after it plays.
+ *
+ * Process loopback aims at one process tree per call. Excluding our own tree
+ * gets everything; muting apps means running a helper per app we still want and
+ * adding the streams up.
  */
 export class AppAudioCapture {
   private readonly children = new Map<number, ChildProcess>()
-  private muted: string[] = []
 
   get active(): boolean {
-    return this.muted.length > 0
+    return this.children.size > 0
   }
 
   async sync(
@@ -59,18 +61,25 @@ export class AppAudioCapture {
     onError: (message: string) => void,
     onGone: (pid: number) => void = () => undefined
   ): Promise<boolean> {
-    this.muted = muted
-
-    if (muted.length === 0 || !helperAvailable()) {
-      if (muted.length > 0) onError('Uygulama bazlı ses yakalayıcı bulunamadı.')
+    if (!helperAvailable()) {
+      onError('Ses yakalayıcı bulunamadı.')
       this.stop()
       return false
     }
 
-    const blocked = new Set(muted.map((name) => name.toLowerCase()))
-    const wanted = new Map<number, string>()
-    for (const item of await listAudioApps()) {
-      if (!blocked.has(item.exe.toLowerCase())) wanted.set(item.pid, item.exe)
+    // One helper covering everything is both cheaper and complete: it also picks
+    // up apps that never register an audio session, which the per-app path
+    // cannot see.
+    const wanted = new Map<number, string[]>()
+    if (muted.length === 0) {
+      wanted.set(process.pid, ['--exclude', String(process.pid)])
+    } else {
+      const blocked = new Set(muted.map((name) => name.toLowerCase()))
+      for (const item of await listAudioApps()) {
+        if (!blocked.has(item.exe.toLowerCase())) {
+          wanted.set(item.pid, ['--include', String(item.pid)])
+        }
+      }
     }
 
     for (const [pid, child] of this.children) {
@@ -81,18 +90,25 @@ export class AppAudioCapture {
       }
     }
 
-    for (const [pid] of wanted) {
+    for (const [pid, args] of wanted) {
       if (this.children.has(pid)) continue
-      const child = spawn(helperPath(), ['--include', String(pid)], {
-        stdio: ['ignore', 'pipe', 'ignore'],
+      const child = spawn(helperPath(), args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
       })
       this.children.set(pid, child)
       child.stdout?.on('data', (chunk: Buffer) => onData(pid, chunk))
-      child.on('close', () => {
+
+      let stderr = ''
+      child.stderr?.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString()
+      })
+      child.on('error', (error) => onError(`ses yakalayıcı başlatılamadı: ${error.message}`))
+      child.on('close', (code) => {
         if (this.children.get(pid) !== child) return
         this.children.delete(pid)
         onGone(pid)
+        if (code) onError(`ses yakalayıcı durdu (${code}): ${stderr.trim().slice(0, 120)}`)
       })
     }
 
@@ -102,6 +118,5 @@ export class AppAudioCapture {
   stop(): void {
     for (const child of this.children.values()) child.kill()
     this.children.clear()
-    this.muted = []
   }
 }
