@@ -62,7 +62,9 @@ export interface AppSettings {
   theme: 'dark' | 'light'
   indicatorCorner: IndicatorCorner
   indicatorOpacity: number
-  /** Keep badges up even over a fullscreen game. Costs FPS; off by default. */
+  /** Keep the badges up the whole time the buffer or a recording is running.
+   *  On by default: seeing at a glance that you are recording is the point of
+   *  having them. Turning it off makes them appear only on a state change. */
   alwaysShowIndicators: boolean
   soundCues: boolean
 }
@@ -120,7 +122,7 @@ export const DEFAULT_SETTINGS: Settings = {
     theme: 'dark',
     indicatorCorner: 'bottom-right',
     indicatorOpacity: 0.9,
-    alwaysShowIndicators: false,
+    alwaysShowIndicators: true,
     soundCues: true
   }
 }

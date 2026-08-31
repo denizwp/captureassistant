@@ -1,45 +1,91 @@
 <!doctype html>
-<html lang="tr" data-mode="dark">
+<html lang="tr">
   <head>
     <meta charset="UTF-8" />
     <title>Capture Assistant — göstergeler</title>
     <style>
-      /* Deliberately dependency-free and framework-free: this page must not
-         run a framework while a game is foreground. The pulsing dot is a CSS
-         keyframe so it lives on the compositor thread and stops entirely when
-         the window is hidden. No requestAnimationFrame anywhere. */
+      /* Deliberately dependency-free: this page must not run a framework, a
+         webfont or a layout pass while a game is foreground. The icons are
+         inline SVG for the same reason. The pulsing dot is a CSS keyframe, so
+         it lives on the compositor thread and stops entirely when the window
+         is hidden. No requestAnimationFrame anywhere. */
       html, body { margin: 0; background: transparent; }
       body {
-        font: 500 12px/1 "Inter", system-ui, sans-serif;
+        height: 100vh;
+        display: flex;
+        font: 500 12px/1 "Segoe UI", system-ui, sans-serif;
         color: #f2f2f2;
         user-select: none;
         cursor: default;
       }
-      .badges { display: grid; gap: 6px; justify-items: end; padding: 12px; }
+
+      /* Always pinned to the top of the window: the window is taller than the
+         row because Chromium refuses to make it smaller, and the main process
+         positions the window so this top edge is where the badges belong. */
+      body { align-items: flex-start; }
+      body[data-corner$="right"] { justify-content: flex-end; }
+      body[data-corner$="left"]  { justify-content: flex-start; }
+
+      .badges { display: flex; gap: 5px; }
+      body[data-corner$="left"] .badges { flex-direction: row-reverse; }
+
       .badge {
         display: none;
         align-items: center;
-        gap: 7px;
-        padding: 6px 10px;
-        border-radius: 8px;
-        background: rgba(16, 16, 18, .82);
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
+        gap: 6px;
+        height: 26px;
+        padding: 0 8px;
+        border-radius: 7px;
+        background: rgba(14, 14, 16, .84);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .09);
       }
       .badge.is-on { display: inline-flex; }
-      .dot { width: 8px; height: 8px; border-radius: 999px; }
-      .dot--rec { background: oklch(57.7% 0.245 27.325); animation: pulse 2s ease-in-out infinite; }
-      .dot--replay { background: oklch(52% 0.095 158); }
-      .dot--mic { background: oklch(76.5% 0.177 163.223); }
-      .time { font-variant-numeric: tabular-nums; }
+      .badge svg { display: block; width: 13px; height: 13px; }
+
+      .rec  { color: oklch(63.7% 0.237 25.331); }
+      .repl { color: oklch(58% 0.095 158); }
+      .mic  { color: oklch(76.5% 0.177 163.223); }
+
+      /* Only the recording badge carries text — everything else is legible
+         from its icon alone. */
+      .time {
+        font-variant-numeric: tabular-nums;
+        font-size: 11px;
+        letter-spacing: .01em;
+        color: #f2f2f2;
+      }
+
+      .pulse { animation: pulse 2s ease-in-out infinite; }
       @keyframes pulse { 50% { opacity: .35; } }
-      @media (prefers-reduced-motion: reduce) { .dot--rec { animation: none; } }
+      @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
     </style>
   </head>
-  <body>
+  <body data-corner="bottom-right">
     <div class="badges">
-      <div class="badge" id="rec"><span class="dot dot--rec"></span>REC <span class="time" id="elapsed">0:00</span></div>
-      <div class="badge" id="replay"><span class="dot dot--replay"></span>REPLAY</div>
-      <div class="badge" id="mic"><span class="dot dot--mic"></span>MIC</div>
+      <div class="badge rec" id="rec" title="Kaydediyor">
+        <svg class="pulse" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <circle cx="8" cy="8" r="6" />
+        </svg>
+        <span class="time" id="elapsed">0:00</span>
+      </div>
+
+      <div class="badge repl" id="replay" title="Geçmiş kayıt açık">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2.6 8a5.4 5.4 0 1 0 1.6-3.8" />
+          <path d="M2.2 2.6v3.2h3.2" />
+          <path d="M8 5.2V8l2 1.2" />
+        </svg>
+      </div>
+
+      <div class="badge mic" id="mic" title="Mikrofon açık">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="5.6" y="1.6" width="4.8" height="8" rx="2.4" />
+          <path d="M3.2 7.6a4.8 4.8 0 0 0 9.6 0" />
+          <path d="M8 12.4v2" />
+        </svg>
+      </div>
     </div>
     <script type="module" src="/src/overlay.ts"></script>
   </body>

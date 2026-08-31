@@ -107,11 +107,11 @@ export function GeneralScreen({
               }
             />
             <Setting
-              label="Rozetleri her zaman göster"
-              hint="Tam ekran oyunlarda FPS düşürebilir ve G-Sync'i devre dışı bırakabilir. Kapalıyken rozetler oyun içinde yalnızca durum değişiminde kısaca belirir."
+              label="Rozetleri sürekli göster"
+              hint="Açıkken kayıt veya tampon çalıştığı sürece rozetler ekranda kalır — ve kaydedilen görüntüde de görünürler. Kapatırsan yalnızca durum değiştiğinde birkaç saniye belirip gizlenirler; bu hem kaydı temiz tutar hem de tam ekran oyunlarda G-Sync'in bozulmasını önler."
               control={
                 <Switch
-                  label="Rozetleri her zaman göster"
+                  label="Rozetleri sürekli göster"
                   checked={app.alwaysShowIndicators}
                   onChange={(alwaysShowIndicators) => patch({ app: { alwaysShowIndicators } })}
                 />

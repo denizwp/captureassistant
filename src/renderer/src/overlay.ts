@@ -9,6 +9,7 @@ interface OverlayState {
   micActive: boolean
   elapsedSec: number
   opacity: number
+  corner: string
 }
 
 declare global {
@@ -35,6 +36,7 @@ window.overlay.on((payload) => {
   mic?.classList.toggle('is-on', state.micActive)
   if (elapsed) elapsed.textContent = formatClock(state.elapsedSec)
   document.body.style.opacity = String(state.opacity)
+  document.body.dataset['corner'] = state.corner
 })
 
 export {}

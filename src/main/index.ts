@@ -7,6 +7,7 @@ import { AudioEngine } from './audio'
 import { SupervisorHost } from './supervisor'
 import { TrayController } from './tray'
 import { HotkeyManager } from './hotkeys'
+import { Overlay } from './overlay'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
 
@@ -19,7 +20,12 @@ import { runCaptureSelfTest } from './capture-selftest'
  * holding a D3D11 device that competes with the game for GPU scheduling. That
  * contention is the specific way Electron apps hurt frame rates.
  */
-app.disableHardwareAcceleration()
+// NOT disabled, despite the temptation: Chromium's software compositor has no
+// per-pixel alpha on Windows, so a transparent frameless window renders as a
+// solid black rectangle — which then sits in the corner of every clip and every
+// screenshot. The GPU process costs us a little contention; a black box in the
+// user's footage costs more.
+//   app.disableHardwareAcceleration()
 // Occlusion calculation walks desktop geometry on a timer and interacts badly
 // with fullscreen games.
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
@@ -101,6 +107,10 @@ if (!singleInstance) {
           next.audio.systemEnabled ? next.audio.systemGain : 0,
           next.audio.micEnabled ? next.audio.micGain : 0
         )
+        // The supervisor owns `micActive` in the published state, so it has to
+        // hear about this too — otherwise the badge and the tray keep showing
+        // the old value.
+        supervisor.updateSettings(next)
         broadcast('settings', next)
         broadcast('toast', {
           kind: 'info',
@@ -122,6 +132,10 @@ if (!singleInstance) {
     tray.start()
     supervisor.on('state', (state) => tray.update(state))
 
+    const overlay = new Overlay()
+    overlay.create(store.get().app)
+    supervisor.on('state', (state) => overlay.update(state, store.get().app))
+
     const hotkeys = new HotkeyManager()
     hotkeys.on('trigger', (action: string) => {
       switch (action) {
@@ -137,6 +151,14 @@ if (!singleInstance) {
         case 'toggleMic':
           actions.toggleMic()
           break
+        case 'toggleIndicators': {
+          const next = store.update({
+            app: { alwaysShowIndicators: !store.get().app.alwaysShowIndicators }
+          })
+          broadcast('settings', next)
+          overlay.update(supervisor.getState(), next.app)
+          break
+        }
       }
     })
     hotkeys.on('conflict', ({ accelerator }: { accelerator: string }) => {
@@ -153,9 +175,13 @@ if (!singleInstance) {
     registerIpc(store, audio, supervisor, () => {
       tray.refresh()
       hotkeys.bind(store.get().hotkeys)
+      overlay.update(supervisor.getState(), store.get().app)
     })
 
-    app.on('will-quit', () => hotkeys.stop())
+    app.on('will-quit', () => {
+      hotkeys.stop()
+      overlay.destroy()
+    })
 
     app.on('activate', showWindow)
   })
