@@ -1,4 +1,4 @@
-import { listAudioApps } from './app-audio'
+import { listAudioAppNames } from './app-audio'
 import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { readdir, rm, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
@@ -10,8 +10,16 @@ import type { AudioEngine } from './audio'
 import type { SupervisorHost } from './supervisor'
 import { durationFor, thumbnailFor } from './thumbnails'
 
+/*
+ * These all go through the same handlers the tray and the hotkeys use. Having a
+ * second copy here is what let the window and the overlay drift out of step with
+ * them — same button, different behaviour depending on where it was pressed.
+ */
 export interface IpcHooks {
   onSettingsChanged?: () => void
+  toggleReplay?: (enabled: boolean) => Promise<void>
+  toggleRecording?: () => Promise<void>
+  saveReplay?: () => void
   toggleMic?: () => void
   openSettings?: () => void
   closeHud?: () => void
@@ -59,21 +67,9 @@ export function registerIpc(
 
   ipcMain.handle('state:get', () => supervisor.getState())
 
-  ipcMain.handle('capture:toggle-replay', async (_e, enabled: boolean) => {
-    const next = store.update({ replay: { enabled } })
-    broadcast('settings', next)
-    if (enabled) await audio.start(next.audio)
-    else audio.stop()
-    supervisor.arm(enabled)
-  })
-
-  ipcMain.handle('capture:toggle-record', async () => {
-    const recording = supervisor.getState().state === 'recording'
-    if (!recording) await audio.start(store.get().audio)
-    supervisor.record(!recording)
-  })
-
-  ipcMain.handle('capture:save-replay', () => supervisor.saveReplay())
+  ipcMain.handle('capture:toggle-replay', (_e, enabled: boolean) => hooks.toggleReplay?.(enabled))
+  ipcMain.handle('capture:toggle-record', () => hooks.toggleRecording?.())
+  ipcMain.handle('capture:save-replay', () => hooks.saveReplay?.())
   ipcMain.handle('capture:toggle-mic', () => hooks.toggleMic?.())
 
   ipcMain.on('hud:open-settings', () => hooks.openSettings?.())
@@ -81,7 +77,7 @@ export function registerIpc(
 
   ipcMain.handle('audio:meter', (_e, enabled: boolean) => audio.setMetering(enabled))
 
-  ipcMain.handle('audio:apps', () => listAudioApps())
+  ipcMain.handle('audio:apps', () => listAudioAppNames())
 
   ipcMain.handle('audio:devices', () => {
     audio.refreshDevices()

@@ -71,21 +71,36 @@ if (!singleInstance) {
 
     const appAudio = new AppAudioCapture()
     let appAudioKey = ''
+    let rescan: ReturnType<typeof setInterval> | null = null
 
-    const startAudio = async (): Promise<void> => {
-      const config = store.get().audio
-      await audio.start(config)
-      appAudioKey = `${config.systemMode}:${config.systemApp ?? ''}`
-      const active = await appAudio.start(
-        config.systemMode,
-        config.systemApp,
-        (chunk) => audio.pushAppAudio(chunk),
-        (message) => broadcast('toast', { kind: 'warning', message })
+    const applyAppAudio = async (): Promise<void> => {
+      const muted = store.get().audio.mutedApps
+      const active = await appAudio.sync(
+        muted,
+        (pid, chunk) => audio.pushAppAudio(pid, chunk),
+        (message) => broadcast('toast', { kind: 'warning', message }),
+        (pid) => audio.dropAppAudio(pid)
       )
       audio.useAppAudio(active)
     }
 
+    const startAudio = async (): Promise<void> => {
+      const config = store.get().audio
+      await audio.start(config)
+      appAudioKey = config.mutedApps.join(',')
+      await applyAppAudio()
+      // Apps come and go mid-session, so keep checking which ones still need a
+      // helper rather than freezing the list at the moment recording started.
+      if (rescan === null && config.mutedApps.length > 0) {
+        rescan = setInterval(() => void applyAppAudio().catch(() => undefined), 5000)
+      }
+    }
+
     const stopAudio = (): void => {
+      if (rescan !== null) {
+        clearInterval(rescan)
+        rescan = null
+      }
       appAudio.stop()
       audio.useAppAudio(false)
       audio.stop()
@@ -104,25 +119,30 @@ if (!singleInstance) {
         config.micEnabled ? config.micGain : 0
       )
 
-      const key = `${config.systemMode}:${config.systemApp ?? ''}`
+      const key = config.mutedApps.join(',')
       if (key === appAudioKey) return
       appAudioKey = key
 
       if (supervisor.getState().state === 'idle') return
-      const active = await appAudio.start(
-        config.systemMode,
-        config.systemApp,
-        (chunk) => audio.pushAppAudio(chunk),
-        (message) => broadcast('toast', { kind: 'warning', message })
-      )
-      audio.useAppAudio(active)
+      await applyAppAudio()
+
+      if (config.mutedApps.length > 0 && rescan === null) {
+        rescan = setInterval(() => void applyAppAudio().catch(() => undefined), 5000)
+      } else if (config.mutedApps.length === 0 && rescan !== null) {
+        clearInterval(rescan)
+        rescan = null
+      }
     }
 
     const actions = {
       toggleReplay: async (enabled: boolean) => {
         if (enabled) await startAudio()
         else stopAudio()
-        store.update({ replay: { enabled } })
+        // The supervisor sizes the ring from its own copy of the settings, so it
+        // has to hear about this before arming or it prunes to the idle window.
+        const next = store.update({ replay: { enabled } })
+        supervisor.updateSettings(next)
+        broadcast('settings', next)
         supervisor.arm(enabled)
       },
       toggleRecording: async () => {
@@ -225,6 +245,9 @@ if (!singleInstance) {
         hud.setTheme(store.get().app.theme)
         void syncAudio()
       },
+      toggleReplay: (enabled: boolean) => actions.toggleReplay(enabled),
+      toggleRecording: () => actions.toggleRecording(),
+      saveReplay: () => actions.saveReplay(),
       toggleMic: () => actions.toggleMic(),
       openSettings: () => {
         hud.hide()
@@ -244,6 +267,10 @@ if (!singleInstance) {
       hotkeys.stop()
       overlay.destroy()
       hud.destroy()
+      // Helper processes are plain children on Windows and outlive us otherwise,
+      // each one holding a loopback session open.
+      stopAudio()
+      supervisor.shutdown()
     })
 
     app.on('activate', showWindow)
