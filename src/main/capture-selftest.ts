@@ -42,7 +42,10 @@ export async function runCaptureSelfTest(
   )
   supervisor.on('toast', (t: { kind: string; message: string }) => log(`  toast(${t.kind}): ${t.message}`))
 
-  // A short buffer keeps the test quick; the janitor still has to prune.
+  // A short buffer keeps the test quick; the janitor still has to prune. The
+  // user's own values are put back at the end — a diagnostic that quietly
+  // rewrites settings is worse than no diagnostic.
+  const original = store.get().replay
   const settings = store.update({ replay: { durationSec: 60, enabled: true } })
   const outDir = settings.output.dir ?? join(app.getPath('videos'), 'Capture Assistant')
   log(`output: ${outDir}`)
@@ -64,6 +67,9 @@ export async function runCaptureSelfTest(
 
   supervisor.arm(false)
   await wait(1500)
+
+  store.update({ replay: { durationSec: original.durationSec, enabled: false } })
+  log(`restored replay duration to ${original.durationSec}s`)
 
   const files = await readdir(outDir).catch(() => [])
   const clips = files.filter((f) => f.endsWith('.mp4'))
