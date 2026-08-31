@@ -1,8 +1,17 @@
 import { BrowserWindow, screen } from 'electron'
+import type { AppSettings } from '@shared/settings'
 import { join } from 'node:path'
 
 const WIDTH = 760
 const HEIGHT = 520
+
+/* Translucent so the acrylic shows, but never white in dark mode and never
+   black in light mode — this is what Chromium paints before the renderer has
+   drawn anything. */
+const BASE_COLOR: Record<AppSettings['theme'], string> = {
+  dark: '#b3121214',
+  light: '#d9f7f7f8'
+}
 
 /*
  * The in-game panel, opened with a hotkey.
@@ -22,9 +31,12 @@ export class Hud {
   private hiddenAt = 0
   private ready = false
 
+  private theme: AppSettings['theme'] = 'dark'
+
   constructor(private readonly preload = join(__dirname, '../preload/hud.js')) {}
 
-  create(): void {
+  create(theme: AppSettings['theme'] = this.theme): void {
+    this.theme = theme
     if (this.window && !this.window.isDestroyed()) return
 
     const win = new BrowserWindow({
@@ -35,7 +47,9 @@ export class Hud {
       // window cannot sample what is behind the window, so the panel ends up
       // fully see-through and unreadable over a game. Windows 11's own acrylic
       // does the blur in the compositor, where the backdrop actually exists.
-      backgroundColor: '#00000000',
+      // Until the renderer paints, Chromium fills the window with this colour;
+      // #00000000 reads as white for that frame.
+      backgroundColor: BASE_COLOR[theme],
       backgroundMaterial: 'acrylic',
       resizable: false,
       movable: false,
@@ -123,6 +137,12 @@ export class Hud {
       this.hiddenAt = Date.now()
       win.hide()
     }
+  }
+
+  setTheme(theme: AppSettings['theme']): void {
+    if (theme === this.theme) return
+    this.theme = theme
+    this.window?.setBackgroundColor(BASE_COLOR[theme])
   }
 
   destroy(): void {

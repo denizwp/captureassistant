@@ -49,9 +49,12 @@ function Hud() {
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
 
   const refresh = useCallback(() => {
-    void api.getSettings().then(setSettings)
-    void api.getState().then(setState)
-    void api.listClips().then((list) => setClips(list.slice(0, 3)))
+    // Retried on failure rather than fetched once: this page can load before
+    // the main process has registered its handlers, and without a retry it
+    // would sit blank forever.
+    api.getSettings().then(setSettings, () => setTimeout(refresh, 250))
+    void api.getState().then(setState, () => undefined)
+    void api.listClips().then((list) => setClips(list.slice(0, 3)), () => undefined)
   }, [])
 
   useEffect(() => {
@@ -93,6 +96,10 @@ function Hud() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  useEffect(() => {
+    if (settings) document.documentElement.dataset['mode'] = settings.app.theme
+  }, [settings])
 
   if (!settings) return null
 

@@ -104,9 +104,6 @@ if (!singleInstance) {
     supervisor.on('state', (state) => tray.update(state))
 
     const hud = new Hud()
-    // Built and loaded up front: creating it on the first keypress would show an
-    // unpainted window for a frame.
-    hud.create()
     const overlay = new Overlay()
     overlay.create(store.get().app)
     supervisor.on('state', (state) => {
@@ -167,6 +164,7 @@ if (!singleInstance) {
         tray.refresh()
         hotkeys.bind(store.get().hotkeys)
         overlay.update(supervisor.getState(), store.get().app)
+        hud.setTheme(store.get().app.theme)
       },
       toggleMic: () => actions.toggleMic(),
       openSettings: () => {
@@ -175,6 +173,12 @@ if (!singleInstance) {
       },
       closeHud: () => hud.hide()
     })
+
+    // Only now that the IPC handlers exist: the page requests settings as soon
+    // as it loads, and building it earlier left it with a rejected promise and
+    // nothing to render. Built up front so the first keypress does not show an
+    // unpainted window.
+    hud.create(store.get().app.theme)
 
     app.on('will-quit', () => {
       hotkeys.stop()
