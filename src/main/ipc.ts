@@ -113,7 +113,9 @@ export function registerIpc(
   ipcMain.handle('clips:reveal', (_e, path: string) => shell.showItemInFolder(path))
   ipcMain.handle('clips:open', (_e, path: string) => shell.openPath(path))
   ipcMain.handle('clips:delete', async (_e, path: string) => {
-    await rm(path, { force: true })
+    // Recycle rather than unlink: one stray click should not cost a clip that
+    // cannot be made again.
+    await shell.trashItem(path).catch(() => rm(path, { force: true }))
     broadcast('clips', await listClips(outputDir()))
   })
   ipcMain.handle('clips:reveal-folder', () => shell.openPath(outputDir()))
