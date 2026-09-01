@@ -63,6 +63,9 @@ export class AudioEngine extends EventEmitter {
 
   private static readonly MAX_MIC_BYTES = 48_000 * 4 * 4 * 0.2
 
+  /* Half a second of quad audio still unread by ffmpeg means it is not reading. */
+  private static readonly MAX_SOCKET_BYTES = 48_000 * 4 * 4 * 0.5
+
   setSystemGain(gain: number): void {
     this.systemGain = Math.max(0, gain)
   }
@@ -130,6 +133,13 @@ export class AudioEngine extends EventEmitter {
   private emitOwed(): void {
     const client = this.client
     if (!client) return
+    // If ffmpeg has stopped reading, queueing more only grows main's heap. The
+    // point of this pump is that the pipe never becomes the slow party, so drop
+    // the audio rather than hold it.
+    if (client.writableLength > AudioEngine.MAX_SOCKET_BYTES) {
+      this.sentFrames = Math.floor(((Date.now() - this.owedFrom) / 1000) * AudioEngine.RATE)
+      return
+    }
 
     const due = Math.floor(((Date.now() - this.owedFrom) / 1000) * AudioEngine.RATE)
     let frames = due - this.sentFrames
