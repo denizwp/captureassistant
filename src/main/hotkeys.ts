@@ -92,11 +92,20 @@ const DEDUP_MS = 200
 
 const WATCHDOG_MS = 30_000
 
+/*
+ * Windows stops calling a low-level hook that overruns LowLevelHooksTimeout and
+ * never says so, which leaves hookRunning true while no key ever arrives again.
+ * Silence is the only symptom we can see, so treat a long enough one as a dead
+ * hook — reinstalling costs nothing if it turns out the user was just idle.
+ */
+const HOOK_SILENCE_MS = 5 * 60_000
+
 export class HotkeyManager extends EventEmitter {
   private bindings: Binding[] = []
   private hookRunning = false
   private watchdog: NodeJS.Timeout | null = null
   private lastFired = new Map<HotkeyAction, number>()
+  private lastEventAt = 0
 
   start(hotkeys: HotkeySettings): void {
     this.startHook()
@@ -145,6 +154,7 @@ export class HotkeyManager extends EventEmitter {
       uIOhook.on('keydown', this.onKeyDown)
       uIOhook.start()
       this.hookRunning = true
+      this.lastEventAt = Date.now()
       write('hook installed; globalShortcut not needed')
 
       globalShortcut.unregisterAll()
@@ -163,10 +173,18 @@ export class HotkeyManager extends EventEmitter {
   }
 
   private checkHook(): void {
-    if (!this.hookRunning) this.startHook()
+    if (!this.hookRunning) {
+      this.startHook()
+      return
+    }
+    if (Date.now() - this.lastEventAt < HOOK_SILENCE_MS) return
+    write('no key events for a while — reinstalling the hook')
+    this.stopHook()
+    this.startHook()
   }
 
   private readonly onKeyDown = (event: UiohookKeyboardEvent): void => {
+    this.lastEventAt = Date.now()
     debug(
       `key ${event.keycode} ctrl=${event.ctrlKey} alt=${event.altKey} ` +
         `shift=${event.shiftKey} meta=${event.metaKey}`
