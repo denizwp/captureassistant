@@ -106,15 +106,37 @@ async function concatInto(ffmpeg: string, args: string[], files: string[]): Prom
   })
 
   const stdin = child.stdin!
+  // -t stops ffmpeg as soon as it has the requested length, so the tail of the
+  // last segment regularly has nowhere to go. That closes the pipe under us and
+  // the EPIPE it raises is the normal end of the job, not a failure.
+  let closed = false
+  stdin.on('error', () => {
+    closed = true
+  })
+  stdin.on('close', () => {
+    closed = true
+  })
+
   try {
-    for (const file of files) {
+    outer: for (const file of files) {
       for await (const chunk of createReadStream(file)) {
+        if (closed) break outer
         if (!stdin.write(chunk as Buffer)) {
-          await new Promise<void>((resolve) => stdin.once('drain', resolve))
+          await new Promise<void>((resolve) => {
+            const done = (): void => {
+              stdin.off('drain', done)
+              stdin.off('close', done)
+              stdin.off('error', done)
+              resolve()
+            }
+            stdin.on('drain', done)
+            stdin.on('close', done)
+            stdin.on('error', done)
+          })
         }
       }
     }
-    stdin.end()
+    if (!closed) stdin.end()
   } catch (error) {
     child.kill()
     throw error
