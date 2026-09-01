@@ -39,7 +39,6 @@ if (!singleInstance) {
     })
 
     const appAudio = new AppAudioCapture()
-    let audioRunning = false
 
     const applyAppAudio = async (): Promise<void> => {
       const config = store.get().audio
@@ -67,11 +66,9 @@ if (!singleInstance) {
       // from the helper, which sees it without Chromium's buffering in between.
       await audio.start({ ...config, systemEnabled: false })
       await applyAppAudio()
-      audioRunning = true
     }
 
     const stopAudio = (): void => {
-      audioRunning = false
       appAudio.stop()
       audio.useAppAudio(false)
       audio.stop()
@@ -150,7 +147,13 @@ if (!singleInstance) {
           const recording = supervisor.getState().state === 'recording'
           if (!recording) await startAudio()
           supervisor.record(!recording)
-          if (recording) await untilAssembled()
+          if (!recording) return
+          await untilAssembled()
+          // Nothing left to feed once the clip is written, and a loopback helper
+          // left running holds an audio session open for good. Driven from the
+          // intent rather than from an idle state: the supervisor also reports
+          // idle in the moment between the sound starting and the buffer arming.
+          if (!store.get().replay.enabled) stopAudio()
         }),
       saveReplay: () =>
         exclusive('save', async () => {
@@ -186,7 +189,7 @@ if (!singleInstance) {
     }
 
     if (process.argv.includes('--capture-test')) {
-      await runCaptureSelfTest(supervisor, audio, store, startAudio, actions)
+      await runCaptureSelfTest(supervisor, store, startAudio, actions)
       supervisor.shutdown()
       await audio.close()
       app.quit()
@@ -216,12 +219,6 @@ if (!singleInstance) {
     })
     tray.start()
     supervisor.on('state', (state) => tray.update(state))
-
-    // Stopping a manual recording with the buffer off leaves nothing to feed,
-    // and a loopback helper left running holds an audio session open for good.
-    supervisor.on('state', (state) => {
-      if (state.state === 'idle' && audioRunning) stopAudio()
-    })
 
     const hud = new Hud()
     const overlay = new Overlay()
