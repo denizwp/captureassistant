@@ -53,6 +53,7 @@ export class Ring {
 
   private writtenBytes = 0
   private timeBase = 0
+  private timeOffset = 0
   private bytesOnDisk = 0
 
   constructor(private readonly dir: string) {}
@@ -93,7 +94,17 @@ export class Ring {
     return (Date.now() - this.timeBase) / 1000
   }
 
+  /*
+   * A fresh ffmpeg truncates index.csv and starts its timestamps at zero again,
+   * so the reader has to go back to the top of the file and carry the timeline
+   * forward itself. Without this the ring reads nothing until the new file
+   * grows past the old offset, and every cut point after a restart is wrong.
+   */
   beginRun(params: Omit<Run, 'id' | 'firstSegment' | 'lastSegment'>): void {
+    this.timeOffset = this.newestEnd
+    this.csvOffset = 0
+    this.carry = ''
+
     const previous = this.runs.at(-1)
     if (previous) previous.lastSegment = this.nextSegmentNumber - 1
     this.runId += 1
@@ -116,6 +127,12 @@ export class Ring {
 
     try {
       const { size } = await handle.stat()
+      // Belt and braces: a shrunk file can only mean it was rewritten.
+      if (size < this.csvOffset) {
+        this.timeOffset = this.newestEnd
+        this.csvOffset = 0
+        this.carry = ''
+      }
       if (size <= this.csvOffset) return []
 
       const length = size - this.csvOffset
@@ -149,8 +166,8 @@ export class Ring {
     return {
       index: Number(match[1]),
       file: join(this.dir, file),
-      start: Number(start),
-      end: Number(end),
+      start: Number(start) + this.timeOffset,
+      end: Number(end) + this.timeOffset,
       runId: this.runId,
       bytes: 0
     }
@@ -275,6 +292,7 @@ export class Ring {
     this.csvOffset = 0
     this.carry = ''
     this.runId = 0
+    this.timeOffset = 0
     this.writtenBytes = 0
     this.bytesOnDisk = 0
     this.lastBytes = 0
