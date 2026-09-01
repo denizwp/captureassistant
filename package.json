@@ -1,6 +1,6 @@
 {
   "name": "capture-assistant",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Instant replay and screen recording for Windows",
   "main": "./out/main/index.js",
   "license": "MIT",
