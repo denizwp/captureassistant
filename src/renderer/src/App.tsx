@@ -3,6 +3,7 @@ import type { SupervisorState } from '@shared/state'
 import { INITIAL_STATE } from '@shared/state'
 import { api } from './api'
 import { useSettings } from './useSettings'
+import { useBusy } from './useBusy'
 import { formatBytes, formatClock } from './format'
 import { ClipsScreen } from './screens/Clips'
 import { RecordingScreen } from './screens/Recording'
@@ -27,6 +28,7 @@ export function App() {
   const { settings, patch } = useSettings()
   const [screen, setScreen] = useState<ScreenId>('clips')
   const [state, setState] = useState<SupervisorState>(INITIAL_STATE)
+  const busy = useBusy()
 
   useEffect(() => {
     void api.getState().then((s) => setState(s as SupervisorState))
@@ -62,7 +64,7 @@ export function App() {
         <aside className="sidebar">
           <div className="sidebar__scroll">
             <div className="sidebar__group sidebar__group--actions">
-              <QuickActions settings={settings} state={state} />
+              <QuickActions settings={settings} state={state} busy={busy} />
             </div>
 
             <div className="sidebar__group">
@@ -121,7 +123,7 @@ export function App() {
 
         {screen === 'clips' && <ClipsScreen />}
         {screen === 'recording' && (
-          <RecordingScreen settings={settings} state={state} patch={patch} />
+          <RecordingScreen settings={settings} state={state} patch={patch} busy={busy} />
         )}
         {screen === 'audio' && <AudioScreen settings={settings} patch={patch} />}
         {screen === 'hotkeys' && <HotkeysScreen settings={settings} patch={patch} />}

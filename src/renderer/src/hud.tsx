@@ -45,6 +45,7 @@ const api = window.hud
 function Hud() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [state, setState] = useState<SupervisorState>(INITIAL_STATE)
+  const [pending, setPending] = useState(false)
   const [clips, setClips] = useState<Clip[]>([])
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
 
@@ -59,6 +60,7 @@ function Hud() {
     const offState = api.on('state', (p) => setState(p as SupervisorState))
     const offSettings = api.on('settings', (p) => setSettings(p as Settings))
     const offClips = api.on('clips', (p) => setClips((p as Clip[]).slice(0, 3)))
+    const offBusy = api.on('busy', (p) => setPending(p !== null))
 
     const onShow = (): void => refresh()
     window.addEventListener('focus', onShow)
@@ -66,6 +68,7 @@ function Hud() {
       offState()
       offSettings()
       offClips()
+      offBusy()
       window.removeEventListener('focus', onShow)
     }
   }, [refresh])
@@ -101,7 +104,7 @@ function Hud() {
 
   const armed = settings.replay.enabled
   const recording = state.state === 'recording'
-  const busy = state.state === 'assembling'
+  const busy = pending || state.state === 'assembling'
 
   return (
     <div className="hud">
@@ -144,7 +147,7 @@ function Hud() {
         <button
           type="button"
           className="btn btn--lg btn--secondary hud__primary"
-          disabled={state.state !== 'armed'}
+          disabled={busy || state.state !== 'armed'}
           onClick={() => void api.saveReplay()}
         >
           <span className="btn__label">

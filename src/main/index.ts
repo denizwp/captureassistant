@@ -89,6 +89,90 @@ if (!singleInstance) {
       audio.setGains(0, config.micEnabled ? config.micGain : 0)
     }
 
+    /*
+     * Every one of these takes a while and can be fired from the window, the
+     * HUD, the tray and a hotkey at once. The supervisor serialises its
+     * messages, so a spammed button does not race — it queues, and the user
+     * gets a run of clips they never asked for. Drop the extra presses instead,
+     * and tell the renderer so the buttons can go quiet.
+     */
+    let busy: string | null = null
+    const setBusy = (name: string | null): void => {
+      busy = name
+      broadcast('busy', name)
+    }
+
+    const exclusive = async (name: string, run: () => Promise<void> | void): Promise<void> => {
+      if (busy) return
+      setBusy(name)
+      try {
+        await run()
+      } finally {
+        setBusy(null)
+      }
+    }
+
+    /* Assembly runs inside the supervisor, so stay busy until it comes back. */
+    const untilAssembled = (): Promise<void> =>
+      new Promise((resolve) => {
+        let entered = false
+        const done = (): void => {
+          supervisor.off('state', watch)
+          clearTimeout(giveUp)
+          resolve()
+        }
+        const watch = (next: { state: string }): void => {
+          if (next.state === 'assembling') entered = true
+          else if (entered) done()
+        }
+        const giveUp = setTimeout(done, 120_000)
+        supervisor.on('state', watch)
+        setTimeout(() => {
+          if (!entered) done()
+        }, 3000)
+      })
+
+    const actions = {
+      toggleReplay: (enabled: boolean) =>
+        exclusive('replay', async () => {
+          if (enabled) await startAudio()
+          else stopAudio()
+          // The supervisor sizes the ring from its own copy of the settings, so
+          // it has to hear about this before arming or it prunes to the idle
+          // window.
+          const next = store.update({ replay: { enabled } })
+          supervisor.updateSettings(next)
+          broadcast('settings', next)
+          supervisor.arm(enabled)
+        }),
+      toggleRecording: () =>
+        exclusive('record', async () => {
+          const recording = supervisor.getState().state === 'recording'
+          if (!recording) await startAudio()
+          supervisor.record(!recording)
+          if (recording) await untilAssembled()
+        }),
+      saveReplay: () =>
+        exclusive('save', async () => {
+          supervisor.saveReplay()
+          await untilAssembled()
+        }),
+      toggleMic: () => {
+        const next = store.update({
+          audio: { micEnabled: !store.get().audio.micEnabled }
+        })
+        audio.setMic(next.audio.micEnabled, next.audio.micDeviceId, next.audio.micGain)
+        audio.setGains(0, next.audio.micEnabled ? next.audio.micGain : 0)
+
+        supervisor.updateSettings(next)
+        broadcast('settings', next)
+        broadcast('toast', {
+          kind: 'info',
+          message: next.audio.micEnabled ? 'Mikrofon açık' : 'Mikrofon kapalı'
+        })
+      }
+    }
+
     if (process.argv.includes('--update-test')) {
       await runUpdateSelfTest()
       app.quit()
@@ -102,7 +186,7 @@ if (!singleInstance) {
     }
 
     if (process.argv.includes('--capture-test')) {
-      await runCaptureSelfTest(supervisor, audio, store, startAudio)
+      await runCaptureSelfTest(supervisor, audio, store, startAudio, actions)
       supervisor.shutdown()
       await audio.close()
       app.quit()
@@ -118,39 +202,6 @@ if (!singleInstance) {
       if (window.isMinimized()) window.restore()
       window.show()
       window.focus()
-    }
-
-    const actions = {
-      toggleReplay: async (enabled: boolean) => {
-        if (enabled) await startAudio()
-        else stopAudio()
-        // The supervisor sizes the ring from its own copy of the settings, so it
-        // has to hear about this before arming or it prunes to the idle window.
-        const next = store.update({ replay: { enabled } })
-        supervisor.updateSettings(next)
-        broadcast('settings', next)
-        supervisor.arm(enabled)
-      },
-      toggleRecording: async () => {
-        const recording = supervisor.getState().state === 'recording'
-        if (!recording) await startAudio()
-        supervisor.record(!recording)
-      },
-      saveReplay: () => supervisor.saveReplay(),
-      toggleMic: () => {
-        const next = store.update({
-          audio: { micEnabled: !store.get().audio.micEnabled }
-        })
-        audio.setMic(next.audio.micEnabled, next.audio.micDeviceId, next.audio.micGain)
-        audio.setGains(0, next.audio.micEnabled ? next.audio.micGain : 0)
-
-        supervisor.updateSettings(next)
-        broadcast('settings', next)
-        broadcast('toast', {
-          kind: 'info',
-          message: next.audio.micEnabled ? 'Mikrofon açık' : 'Mikrofon kapalı'
-        })
-      }
     }
 
     const tray = new TrayController(store, {
@@ -250,7 +301,17 @@ if (!singleInstance) {
     void pruneThumbnails()
     void discardLegacyUserData()
     void discardOldBuild()
-    setTimeout(() => void checkForUpdate().catch(() => undefined), 4000)
+    setTimeout(
+      () =>
+        void checkForUpdate({
+          onDownloadStart: () => {
+            setBusy('update')
+            broadcast('toast', { kind: 'info', message: 'Güncelleme indiriliyor…' })
+          },
+          onDownloadEnd: () => setBusy(null)
+        }).catch(() => undefined),
+      4000
+    )
 
     app.on('will-quit', () => {
       hotkeys.stop()

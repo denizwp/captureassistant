@@ -105,7 +105,12 @@ export async function discardOldBuild(): Promise<void> {
   await rm(`${exe}.old`, { force: true }).catch(() => undefined)
 }
 
-export async function checkForUpdate(): Promise<void> {
+export interface UpdateHooks {
+  onDownloadStart?: () => void
+  onDownloadEnd?: () => void
+}
+
+export async function checkForUpdate(hooks: UpdateHooks = {}): Promise<void> {
   const exe = portableExe()
   if (!exe || !app.isPackaged) return
 
@@ -126,10 +131,14 @@ export async function checkForUpdate(): Promise<void> {
   if (response !== 0) return
 
   const staged = `${exe}.new`
+  // The download is well over a hundred megabytes and the app looks frozen for
+  // the whole of it unless something says otherwise.
+  hooks.onDownloadStart?.()
   try {
     await download(release, staged)
     await scheduleSwap(exe, staged, true)
   } catch (error) {
+    hooks.onDownloadEnd?.()
     await rm(staged, { force: true }).catch(() => undefined)
     await dialog.showMessageBox({
       type: 'error',

@@ -6,14 +6,16 @@ import { Keys } from './controls'
 
 export function QuickActions({
   settings,
-  state
+  state,
+  busy: pending
 }: {
   settings: Settings
   state: SupervisorState
+  busy: boolean
 }) {
   const recording = state.state === 'recording'
   const armed = settings.replay.enabled
-  const busy = state.state === 'assembling'
+  const busy = pending || state.state === 'assembling'
 
   return (
     <div className="actions">
@@ -39,7 +41,7 @@ export function QuickActions({
         type="button"
         className="btn btn--block btn--action btn--secondary"
 
-        disabled={state.state !== 'armed'}
+        disabled={busy || state.state !== 'armed'}
         title={
           armed
             ? `Son ${formatDuration(settings.replay.durationSec)} kadarını klip olarak kaydet`
@@ -67,6 +69,7 @@ export function QuickActions({
           aria-checked={armed}
           aria-label="Geçmiş kaydı aç"
           className="switch"
+          disabled={busy}
           onClick={() => void api.toggleReplayBuffer(!armed)}
         />
       </div>

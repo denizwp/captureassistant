@@ -26,11 +26,13 @@ const CODECS: { value: CodecId; label: string; hint: string }[] = [
 export function RecordingScreen({
   settings,
   state,
-  patch
+  patch,
+  busy
 }: {
   settings: Settings
   state: SupervisorState
   patch: (next: DeepPartial<Settings>) => void
+  busy: boolean
 }) {
   const [monitors, setMonitors] = useState<MonitorInfo[]>([])
   const [advanced, setAdvanced] = useState(false)
@@ -61,7 +63,7 @@ export function RecordingScreen({
                   label="Geçmiş kaydı aç"
 
                   checked={settings.replay.enabled}
-                  disabled={state.state === 'assembling'}
+                  disabled={busy || state.state === 'assembling'}
                   onChange={(enabled) => void api.toggleReplayBuffer(enabled)}
                 />
               }
