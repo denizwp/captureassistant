@@ -13,6 +13,7 @@ const BASE_COLOR: Record<AppSettings['theme'], string> = {
 export class Hud {
   private window: BrowserWindow | null = null
   private hiddenAt = 0
+  private shownAt = 0
   private ready = false
 
   private theme: AppSettings['theme'] = 'dark'
@@ -50,7 +51,13 @@ export class Hud {
     win.setAlwaysOnTop(true, 'screen-saver')
     win.setVisibleOnAllWorkspaces(true)
 
-    win.on('blur', () => this.hide())
+    // Games that clip the cursor tend to fight for the foreground for a moment
+    // after we take it. Closing on that first blur would shut the panel before
+    // the user could touch it.
+    win.on('blur', () => {
+      if (Date.now() - this.shownAt < 500) return
+      this.hide()
+    })
 
     win.once('ready-to-show', () => {
       this.ready = true
@@ -95,10 +102,16 @@ export class Hud {
     }
 
     this.center()
-    win.showInactive()
+    this.shownAt = Date.now()
+    // show() activates where showInactive() does not, and a game only lets go
+    // of the cursor once it loses the foreground — without that the panel opens
+    // over a mouse still locked to the middle of the game.
+    win.show()
+    win.moveTop()
     win.focus()
 
     win.setAlwaysOnTop(true, 'screen-saver')
+    win.webContents.focus()
   }
 
   hide(): void {

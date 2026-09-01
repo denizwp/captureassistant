@@ -110,3 +110,10 @@
     color: var(--text-subtle);
 }
 .hud__foot .kbd { margin: 0 2px; }
+
+/* Focus has to be visible here even when it was moved by script: with the
+   cursor locked by a game, this ring is the only thing telling you where a
+   keypress will land. */
+.hud button:focus {
+  box-shadow: inset 0 0 0 2px var(--brand);
+}

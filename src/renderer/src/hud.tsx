@@ -88,12 +88,50 @@ function Hud() {
     }
   }, [clips, thumbs])
 
+  /*
+   * Some games clip the cursor to the middle of their window and keep putting it
+   * back, so the panel has to be fully usable without one: arrows and Tab walk
+   * the controls, Enter presses, Escape closes.
+   */
   useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') api.close()
+    const controls = (): HTMLElement[] =>
+      [...document.querySelectorAll<HTMLElement>('.hud button:not([disabled])')].filter(
+        (el) => el.offsetParent !== null
+      )
+
+    const step = (delta: number): void => {
+      const items = controls()
+      if (items.length === 0) return
+      const at = items.indexOf(document.activeElement as HTMLElement)
+      const next = items[(at + delta + items.length) % items.length]
+      next?.focus()
     }
+
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        api.close()
+        return
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        step(1)
+      } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        event.preventDefault()
+        step(-1)
+      }
+    }
+
+    const onShown = (): void => {
+      window.requestAnimationFrame(() => controls()[0]?.focus())
+    }
+
+    onShown()
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('focus', onShown)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('focus', onShown)
+    }
   }, [])
 
   useEffect(() => {
