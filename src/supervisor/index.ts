@@ -116,7 +116,7 @@ async function startEncoder(): Promise<void> {
     audioPipe: audioDisabled ? null : audioPipe
   })
 
-  ring.beginRun({
+  await ring.beginRun({
     width: 0,
     height: 0,
     fps: settings.capture.fps,

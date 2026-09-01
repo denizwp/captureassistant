@@ -99,8 +99,17 @@ export class Ring {
    * so the reader has to go back to the top of the file and carry the timeline
    * forward itself. Without this the ring reads nothing until the new file
    * grows past the old offset, and every cut point after a restart is wrong.
+   *
+   * The old file has to go before the offset is rewound: a poll landing in the
+   * gap before ffmpeg replaces it would otherwise read the whole previous run
+   * back in as new segments, shifted by the carried offset.
    */
-  beginRun(params: Omit<Run, 'id' | 'firstSegment' | 'lastSegment'>): void {
+  async beginRun(params: Omit<Run, 'id' | 'firstSegment' | 'lastSegment'>): Promise<void> {
+    // The poll runs at 1Hz, so whatever the dying encoder listed in its last
+    // second is still unread. Take it before the file goes, or that second is
+    // charged to the outage.
+    await this.poll()
+    await unlinkPatiently(this.indexPath)
     this.timeOffset = this.newestEnd
     this.csvOffset = 0
     this.carry = ''
