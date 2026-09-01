@@ -41,6 +41,7 @@ let ringDir = ''
 let outDir = ''
 let audioPipe = ''
 let audioDisabled = false
+let reprobed = false
 let bufferArmed = false
 let outputIdx = 0
 let adapterIdx = 0
@@ -158,10 +159,15 @@ async function startEncoder(): Promise<void> {
   // ffmpeg always dies here; while a game is running that is a normal event,
   // not a malfunction.
   let accessLost = false
+  let wroteNothing = false
   proc.stderr?.on('data', (chunk: Buffer) => {
     const text = chunk.toString()
     stderr = `${stderr}${text}`.slice(-2000)
     if (text.includes('887a0026')) accessLost = true
+    // ffmpeg closes an output that never got a packet on one of its streams and
+    // exits. It dies too quickly for the stall watchdog, which only looks at a
+    // process that is still up.
+    if (text.includes('Nothing was written into output file')) wroteNothing = true
     for (const line of text.split('\n')) {
       if (line.trim()) log(`ffmpeg: ${line.trim()}`, 'warning')
     }
@@ -170,6 +176,11 @@ async function startEncoder(): Promise<void> {
   proc.on('close', (code) => {
     child = null
     if (stopping || state === 'idle') return
+
+    if (wroteNothing) {
+      void recoverFromEmptyOutput()
+      return
+    }
 
     const lived = Date.now() - startedAt
     // Losing the duplication says nothing about whether we can encode, so it
@@ -247,6 +258,45 @@ const STALL_SEC = 10
  * like a working buffer that never fills, so treat a silent ring as a broken
  * audio source and come back without it rather than sit there.
  */
+/*
+ * One of the streams never produced a packet. Sound is the half that can be
+ * dropped and still leave a usable recording, so try that first; after that the
+ * screen is the only suspect left, and the display the probe picked may simply
+ * have stopped working, so scan for one that does.
+ */
+async function recoverFromEmptyOutput(): Promise<void> {
+  if (restarting) return
+  restarting = true
+
+  if (!audioDisabled) {
+    audioDisabled = true
+    consecutiveFailures = 0
+    log('the encoder wrote nothing, retrying without sound', 'warning')
+    toast('warning', 'Ses yakalanamadı — görüntü sessiz kaydediliyor.')
+    restarting = false
+    await startEncoder().catch((error: unknown) => fail(String(error)))
+    return
+  }
+
+  if (!reprobed) {
+    reprobed = true
+    consecutiveFailures = 0
+    encoder = null
+    log('still nothing on screen, looking for a display that captures', 'warning')
+    restarting = false
+    if (await ensureEncoder()) {
+      await startEncoder().catch((error: unknown) => fail(String(error)))
+    }
+    return
+  }
+
+  restarting = false
+  state = 'idle'
+  bufferArmed = false
+  log('no stream produced any data, giving up', 'error')
+  fail('Ekran kaydı başlatılamadı — ekran yakalama hiç görüntü vermedi.')
+}
+
 async function watchForStall(): Promise<void> {
   if (!ring || !child || startedAt === 0) return
   if (ring.newestEnd > 0) return
@@ -346,6 +396,7 @@ async function setArmed(enabled: boolean): Promise<void> {
     lastError = null
     consecutiveFailures = 0
     audioDisabled = false
+    reprobed = false
     await startEncoder()
   } else {
     if (state === 'recording') await stopRecording()
