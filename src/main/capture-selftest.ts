@@ -50,7 +50,8 @@ export async function runCaptureSelfTest(
   supervisor: SupervisorHost,
   audio: AudioEngine,
   store: SettingsStore,
-  startAudio: () => Promise<void>
+  startAudio: () => Promise<void>,
+  actions: { saveReplay: () => Promise<void> }
 ): Promise<void> {
   const logPath = join(app.getPath('temp'), 'ca-capture-selftest.log')
   writeFileSync(logPath, '')
@@ -121,6 +122,16 @@ export async function runCaptureSelfTest(
   log('saving replay')
   supervisor.saveReplay()
   await wait(12_000)
+
+  // The supervisor serialises its messages, so a spammed button does not race —
+  // it queues, and every queued press writes another clip.
+  const before = (await readdir(outDir).catch(() => [])).filter((f) => f.endsWith('.mp4')).length
+  log('spamming save five times')
+  for (let i = 0; i < 5; i++) void actions.saveReplay()
+  await wait(20_000)
+  const after = (await readdir(outDir).catch(() => [])).filter((f) => f.endsWith('.mp4')).length
+  log(`  ${after - before} clip(s) written from 5 presses`)
+  log(after - before === 1 ? '  OK: extra presses dropped' : '  FAILED: spam produced extra clips')
 
   const RECORD_SEC = 10
   log(`manual recording: start, holding ${RECORD_SEC}s`)
