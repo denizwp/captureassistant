@@ -1,11 +1,12 @@
 import { app } from 'electron'
 import { execFile } from 'node:child_process'
+import { createServer } from 'node:net'
 import { appendFileSync, existsSync, writeFileSync } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { SupervisorState } from '@shared/state'
-import type { AudioEngine } from './audio'
+import { AUDIO_PIPE } from './audio'
 import type { SettingsStore } from './store'
 import type { SupervisorHost } from './supervisor'
 
@@ -48,10 +49,9 @@ async function durationOf(path: string): Promise<number | null> {
 
 export async function runCaptureSelfTest(
   supervisor: SupervisorHost,
-  audio: AudioEngine,
   store: SettingsStore,
   startAudio: () => Promise<void>,
-  actions: { saveReplay: () => Promise<void> }
+  actions: { saveReplay: () => Promise<void>; toggleReplay: (enabled: boolean) => Promise<void> }
 ): Promise<void> {
   const logPath = join(app.getPath('temp'), 'ca-capture-selftest.log')
   writeFileSync(logPath, '')
@@ -89,16 +89,28 @@ export async function runCaptureSelfTest(
   supervisor.start(settings)
   const starveAudio = process.argv.includes('--starve-audio')
   if (starveAudio) {
-    // The pipe has to exist or ffmpeg just fails to open it. The failure worth
-    // reproducing is the one where it connects and then waits forever.
-    await audio.listen()
+    // AudioEngine.listen would start its own pump and feed silence, which is
+    // exactly what stops this from happening in the field. Serve the pipe raw
+    // so ffmpeg connects and then waits forever, and ffmpeg closes an output
+    // whose audio stream never saw a packet.
+    await new Promise<void>((resolve) => {
+      createServer(() => undefined).listen(AUDIO_PIPE, resolve)
+    })
     log('DELIBERATELY serving an empty audio pipe, expecting a silent fallback')
   } else {
     // The same path the app uses, so the test exercises the real audio wiring.
     await startAudio()
   }
-  log('arming')
-  supervisor.arm(true)
+  if (starveAudio) {
+    // The raw server already holds the pipe, so the real path cannot set sound up.
+    log('arming')
+    supervisor.arm(true)
+  } else {
+    // The same action the buttons and hotkeys use: arming any other way misses a
+    // break between the sound starting and the buffer arming.
+    log('arming through the same action the buttons use')
+    void actions.toggleReplay(true).catch((error: unknown) => log(`arm failed: ${String(error)}`))
+  }
 
   await wait(starveAudio ? 26_000 : 14_000)
   if (!last || (last as SupervisorState).state !== 'armed') {
