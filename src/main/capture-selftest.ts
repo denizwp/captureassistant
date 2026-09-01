@@ -147,12 +147,47 @@ export async function runCaptureSelfTest(
     }
   }
 
+  // A fresh ffmpeg rewrites index.csv from the top with its timestamps back at
+  // zero. If the ring keeps reading from its old offset it goes blind, and the
+  // cut points taken from that timeline come out short and start late.
+  log(`manual recording across an encoder restart, holding ${RECORD_SEC}s`)
+  const restartStart = Date.now()
+  supervisor.record(true)
+  await wait(4000)
+  await run('taskkill', ['/f', '/im', 'ffmpeg.exe']).catch(() => undefined)
+  log('  killed the encoder mid-recording')
+  await wait(RECORD_SEC * 1000 - 4000)
+  supervisor.record(false)
+  const restartHeld = (Date.now() - restartStart) / 1000
+  await wait(12_000)
+
+  const spanned = await newestClip(outDir, 'Kayıt')
+  const spannedLength = spanned ? await durationOf(spanned) : null
+  if (spannedLength === null) {
+    log('  FAILED: no clip from a recording that spanned a restart')
+  } else {
+    const lost = restartHeld - spannedLength
+    log(`  held ${restartHeld.toFixed(2)}s, clip ${spannedLength.toFixed(2)}s, lost ${lost.toFixed(2)}s`)
+    // The outage itself is genuinely missing footage; anything beyond that is
+    // the ring having lost track of where it was.
+    if (lost > 3 || lost < -0.5) {
+      log(`  FAILED: the ring lost ${lost.toFixed(2)}s across the restart`)
+    } else {
+      log('  OK: the clip survives an encoder restart')
+    }
+  }
+
   supervisor.arm(false)
   await wait(1500)
 
   // Recording with the buffer off starts the encoder from nothing, which is a
   // different path from recording out of a ring that is already turning.
   log('manual recording with the buffer off')
+  let outages = 0
+  const countOutage = (entry: { line: string }): void => {
+    if (entry.line.includes('screen capture lost')) outages += 1
+  }
+  supervisor.on('log', countOutage)
   supervisor.record(true)
   // The encoder is cold here and only reports 'recording' once it is actually
   // rolling, so time the hold from that rather than from the request.
@@ -166,6 +201,7 @@ export async function runCaptureSelfTest(
   const coldHeld = (Date.now() - coldStart) / 1000
   await wait(12_000)
 
+  supervisor.off('log', countOutage)
   const cold = await newestClip(outDir, 'Kayıt')
   const coldLength = cold ? await durationOf(cold) : null
   if (coldLength === null) {
@@ -173,8 +209,15 @@ export async function runCaptureSelfTest(
   } else {
     const drift = coldLength - coldHeld
     log(`  held ${coldHeld.toFixed(2)}s, clip ${coldLength.toFixed(2)}s, drift ${drift.toFixed(2)}s`)
-    log(Math.abs(drift) > 0.6 ? '  FAILED: cold recording is off' : '  OK: cold recording lines up')
-    log(`  (encoder warm-up excluded from the hold)`)
+    // Each time the duplication is lost the screen genuinely is not being
+    // captured, so allow for the outages this run actually saw.
+    const allowance = 0.6 + outages * 1.8
+    log(
+      Math.abs(drift) > allowance
+        ? `  FAILED: cold recording is off by more than the ${outages} outage(s) explain`
+        : '  OK: cold recording lines up'
+    )
+    log(`  (encoder warm-up excluded from the hold, ${outages} capture outage(s) during it)`)
   }
 
   restore()
