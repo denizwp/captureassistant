@@ -39,6 +39,7 @@ if (!singleInstance) {
     })
 
     const appAudio = new AppAudioCapture()
+    let audioRunning = false
 
     const applyAppAudio = async (): Promise<void> => {
       const config = store.get().audio
@@ -66,9 +67,11 @@ if (!singleInstance) {
       // from the helper, which sees it without Chromium's buffering in between.
       await audio.start({ ...config, systemEnabled: false })
       await applyAppAudio()
+      audioRunning = true
     }
 
     const stopAudio = (): void => {
+      audioRunning = false
       appAudio.stop()
       audio.useAppAudio(false)
       audio.stop()
@@ -162,6 +165,12 @@ if (!singleInstance) {
     })
     tray.start()
     supervisor.on('state', (state) => tray.update(state))
+
+    // Stopping a manual recording with the buffer off leaves nothing to feed,
+    // and a loopback helper left running holds an audio session open for good.
+    supervisor.on('state', (state) => {
+      if (state.state === 'idle' && audioRunning) stopAudio()
+    })
 
     const hud = new Hud()
     const overlay = new Overlay()
