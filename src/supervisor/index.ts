@@ -148,6 +148,11 @@ async function startEncoder(): Promise<void> {
     }
   })
 
+  // A spawn that never gets off the ground emits 'error', and an 'error' with
+  // no listener is thrown: the whole supervisor would go down over a missing or
+  // blocked ffmpeg. 'close' still follows, so the restart path handles it.
+  proc.on('error', (error) => log(`ffmpeg could not start: ${error.message}`, 'error'))
+
   let stderr = ''
   // 887a0026 is DXGI_ERROR_ACCESS_LOST. ddagrab has no recovery path for it, so
   // ffmpeg always dies here; while a game is running that is a normal event,

@@ -95,7 +95,13 @@ async function scheduleSwap(exe: string, staged: string, relaunch: boolean): Pro
   ]
 
   await writeFile(script, `${lines.join('\r\n')}\r\n`, 'utf8')
-  spawn('cmd.exe', ['/c', script], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+  const swap = spawn('cmd.exe', ['/c', script], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true
+  })
+  swap.on('error', () => undefined)
+  swap.unref()
 }
 
 export async function discardOldBuild(): Promise<void> {
