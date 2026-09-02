@@ -37,6 +37,13 @@ export interface RingArgsInput {
   drawMouse: boolean
 
   audioPipe: string | null
+
+  /*
+   * Drops the encoder settings that run on the GPU's shaders rather than on the
+   * encode block. They cost little on a card with room to spare, but on a busy
+   * one they queue behind the game and hold the capture back with them.
+   */
+  lowOverhead?: boolean
 }
 
 export function buildRingArgs(input: RingArgsInput): string[] {
@@ -78,7 +85,7 @@ export function buildRingArgs(input: RingArgsInput): string[] {
     audioPipe ? `${source}[v];${audioGraph()}` : `${source}[v]`,
     ...audioMaps(input),
 
-    ...encoderArgs(encoder, capture, maxrateKbps),
+    ...encoderArgs(encoder, capture, maxrateKbps, input.lowOverhead ?? false),
     ...(audioPipe ? ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000'] : []),
 
     '-fps_mode', 'cfr',
@@ -109,7 +116,8 @@ function audioMaps(input: RingArgsInput): string[] {
 function encoderArgs(
   encoder: EncoderChoice,
   capture: CaptureSettings,
-  maxrateKbps: number
+  maxrateKbps: number,
+  lowOverhead = false
 ): string[] {
   const gop = String(capture.fps * SEGMENT_SEC)
   const maxrate = `${maxrateKbps}k`
@@ -133,6 +141,19 @@ function encoderArgs(
   ]
 
   if (encoder.id.endsWith('_nvenc')) {
+    if (lowOverhead) {
+      return [
+        '-c:v', encoder.id,
+        '-preset', 'p4',
+        '-tune', 'll',
+        ...(capture.codec === 'h264' ? ['-profile:v', 'high'] : []),
+        ...rateControl,
+        '-bf', '0',
+        '-rc-lookahead', '0',
+        '-spatial-aq', '0',
+        ...keyframes
+      ]
+    }
     return [
       '-c:v', encoder.id,
 
