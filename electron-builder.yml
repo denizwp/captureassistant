@@ -18,7 +18,16 @@ extraResources:
   - from: resources
     to: .
     filter:
+      # ffprobe is another 139MB of the same binary and nothing needs it: ffmpeg
+      # asked for no output prints the header the same way.
       - '**/*'
+      - '!ffmpeg/ffprobe.exe'
+
+# Chromium ships 55 locales at 42MB; the portable launcher unpacks all of them
+# on every start.
+electronLanguages:
+  - en-US
+  - tr
 
 asar: true
 asarUnpack:

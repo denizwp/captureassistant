@@ -52,24 +52,23 @@ export async function durationFor(clipPath: string, mtimeMs: number): Promise<nu
   const cached = durations.get(key)
   if (cached !== undefined) return cached
 
-  const probe = ffmpegPath().replace(/ffmpeg\.exe$/i, 'ffprobe.exe')
+  /*
+   * Read from ffmpeg rather than ffprobe: asking for no output makes it print
+   * the header and stop, which takes about a tenth of a second, and it keeps a
+   * second 139MB binary out of the package.
+   */
   try {
-    const { stdout } = await run(
-      probe,
-      [
-        '-v', 'error',
-        '-show_entries', 'format=duration',
-        '-of', 'default=nw=1:nk=1',
-        clipPath
-      ],
-      { timeout: 10_000 }
-    )
-    const seconds = Number.parseFloat(stdout.trim())
+    await run(ffmpegPath(), ['-hide_banner', '-i', clipPath], { timeout: 10_000 })
+    return 0
+  } catch (error) {
+    const stderr = (error as { stderr?: string }).stderr ?? ''
+    const match = /Duration:\s*(\d+):(\d\d):(\d\d(?:\.\d+)?)/.exec(stderr)
+    if (!match) return 0
+    const seconds =
+      Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
     const value = Number.isFinite(seconds) ? seconds : 0
     durations.set(key, value)
     return value
-  } catch {
-    return 0
   }
 }
 

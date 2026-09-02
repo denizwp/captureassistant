@@ -12,11 +12,11 @@ import type { SupervisorHost } from './supervisor'
 
 const run = promisify(execFile)
 
-function ffprobePath(): string {
-  const packaged = join(process.resourcesPath, 'ffmpeg', 'ffprobe.exe')
+function ffmpegPath(): string {
+  const packaged = join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe')
   return existsSync(packaged)
     ? packaged
-    : join(app.getAppPath(), 'resources', 'ffmpeg', 'ffprobe.exe')
+    : join(app.getAppPath(), 'resources', 'ffmpeg', 'ffmpeg.exe')
 }
 
 async function newestClip(dir: string, prefix: string): Promise<string | null> {
@@ -32,18 +32,16 @@ async function newestClip(dir: string, prefix: string): Promise<string | null> {
   return newest?.path ?? null
 }
 
+/* ffmpeg with no output prints the header and stops, so ffprobe need not ship. */
 async function durationOf(path: string): Promise<number | null> {
   try {
-    const { stdout } = await run(ffprobePath(), [
-      '-v', 'error',
-      '-show_entries', 'format=duration',
-      '-of', 'csv=p=0',
-      path
-    ])
-    const value = Number(stdout.trim())
-    return Number.isFinite(value) ? value : null
-  } catch {
+    await run(ffmpegPath(), ['-hide_banner', '-i', path], { timeout: 15_000 })
     return null
+  } catch (error) {
+    const stderr = (error as { stderr?: string }).stderr ?? ''
+    const match = /Duration:\s*(\d+):(\d\d):(\d\d(?:\.\d+)?)/.exec(stderr)
+    if (!match) return null
+    return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
   }
 }
 
