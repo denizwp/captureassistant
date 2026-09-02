@@ -55,6 +55,7 @@ let consecutiveFailures = 0
 let startedAt = 0
 let health: CaptureHealth | null = null
 let healthLoggedAt = 0
+let warnedSlowCapture = false
 
 const HEALTHY_RUN_MS = 5000
 const MAX_FAST_FAILURES = 4
@@ -133,6 +134,7 @@ async function startEncoder(): Promise<void> {
 
   health = new CaptureHealth()
   healthLoggedAt = 0
+  warnedSlowCapture = false
   const monitor = health
   proc.stdout?.on('data', (chunk: Buffer) => {
     if (health !== monitor) return
@@ -143,11 +145,23 @@ async function startEncoder(): Promise<void> {
 
     // A timeline in the log is the only way to tell afterwards whether a clip
     // came out choppy because the screen was never sampled.
+    const kbps = ((ring?.writeRateBytesPerSec ?? 0) * 8) / 1000
     const now = Date.now()
     if (now - healthLoggedAt > 30_000) {
       healthLoggedAt = now
-      log(`capture ${fps.toFixed(1)}/${target} fps`)
+      log(`capture ${fps.toFixed(1)}/${target} fps, ${kbps.toFixed(0)} kbps`)
     }
+
+    // Both halves are needed: a screen nobody is touching also samples slowly,
+    // and it is the bitrate that says the picture was actually moving.
+    if (warnedSlowCapture || fps >= target * 0.6 || kbps < 2000) return
+    warnedSlowCapture = true
+    log(`capture starved: ${fps.toFixed(1)}/${target} fps at ${kbps.toFixed(0)} kbps`, 'warning')
+    toast(
+      'warning',
+      `Ekran yakalama ${Math.round(fps)} fps'e düştü — kayıt takılabilir. ` +
+        'Oyun tam ekran modundaysa kenarlıksız pencereyi dene.'
+    )
   })
 
   // A spawn that never gets off the ground emits 'error', and an 'error' with

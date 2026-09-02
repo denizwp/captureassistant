@@ -67,6 +67,11 @@ export class Ring {
     return last ? last.index + 1 : 0
   }
 
+  /* What the janitor already measures, for callers that cannot await stats(). */
+  get writeRateBytesPerSec(): number {
+    return this.bytesPerSec
+  }
+
   get newestEnd(): number {
     return this.segments.at(-1)?.end ?? 0
   }
