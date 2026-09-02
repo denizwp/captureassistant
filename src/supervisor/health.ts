@@ -9,6 +9,7 @@ interface Sample {
   frames: number
   dups: number
   bytes: number
+  outMs: number
 }
 
 export class CaptureHealth {
@@ -16,7 +17,8 @@ export class CaptureHealth {
   private frames = 0
   private dups = 0
   private bytes = 0
-  private samples: { at: number; frames: number; dups: number; bytes: number }[] = []
+  private outMs = 0
+  private samples: Sample[] = []
 
   constructor(private readonly windowMs = 10_000) {}
 
@@ -31,13 +33,20 @@ export class CaptureHealth {
       if (key === 'frame' && Number.isFinite(value)) this.frames = value
       else if (key === 'dup_frames' && Number.isFinite(value)) this.dups = value
       else if (key === 'total_size' && Number.isFinite(value)) this.bytes = value
+      else if (key === 'out_time_us' && Number.isFinite(value)) this.outMs = value / 1000
       else if (key === 'progress') this.mark()
     }
   }
 
   private mark(): void {
     const now = Date.now()
-    this.samples.push({ at: now, frames: this.frames, dups: this.dups, bytes: this.bytes })
+    this.samples.push({
+      at: now,
+      frames: this.frames,
+      dups: this.dups,
+      bytes: this.bytes,
+      outMs: this.outMs
+    })
     while (this.samples.length > 2 && now - (this.samples[0]?.at ?? now) > this.windowMs) this.samples.shift()
   }
 
@@ -50,12 +59,20 @@ export class CaptureHealth {
     return { first, last, seconds }
   }
 
-  /* Frames that actually came off the screen, per second. Null until the window has filled. */
+  /*
+   * Fresh frames per second of recording, not per second of wall clock. After a
+   * stall ddagrab empties a backlog as fast as the graph will take it, and
+   * against wall time that reads as hundreds of frames a second — a number that
+   * says nothing about how much of the screen was caught. Measured against the
+   * footage produced it cannot exceed the rate being recorded at.
+   */
   get effectiveFps(): number | null {
     const span = this.span
     if (!span) return null
+    const recorded = (span.last.outMs - span.first.outMs) / 1000
+    if (recorded <= 0.5) return 0
     const fresh = span.last.frames - span.first.frames - (span.last.dups - span.first.dups)
-    return Math.max(0, fresh / span.seconds)
+    return Math.max(0, fresh / recorded)
   }
 
   /*
