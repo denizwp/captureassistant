@@ -61,14 +61,27 @@ export function buildRingArgs(input: RingArgsInput): string[] {
     `:output_fmt=bgra` +
     `:allow_fallback=1`
 
+  // gdigrab is a real input, so it takes index 0 and pushes the audio pipe to 1;
+  // ddagrab is a filter and leaves the pipe at 0.
+  const gdi = capture.method === 'gdi'
+  const audioIdx = gdi ? 1 : 0
+
+  const videoInput = gdi
+    ? [
+        '-f', 'gdigrab',
+        '-framerate', String(capture.fps),
+        '-draw_mouse', drawMouse ? '1' : '0',
+        '-i', 'desktop'
+      ]
+    : ['-init_hw_device', `d3d11va=dda:${adapterIdx}`, '-filter_hw_device', 'dda']
+
   return [
     '-hide_banner',
     '-nostdin',
     '-loglevel', 'level+warning',
     '-progress', 'pipe:1',
 
-    '-init_hw_device', `d3d11va=dda:${adapterIdx}`,
-    '-filter_hw_device', 'dda',
+    ...videoInput,
 
     ...(audioPipe
       ? [
@@ -81,9 +94,12 @@ export function buildRingArgs(input: RingArgsInput): string[] {
         ]
       : []),
 
-    '-filter_complex',
-    audioPipe ? `${source}[v];${audioGraph()}` : `${source}[v]`,
-    ...audioMaps(input),
+    ...(gdi
+      ? audioPipe
+        ? ['-filter_complex', audioGraph(audioIdx)]
+        : []
+      : ['-filter_complex', audioPipe ? `${source}[v];${audioGraph(audioIdx)}` : `${source}[v]`]),
+    ...audioMaps(input, gdi),
 
     ...encoderArgs(encoder, capture, maxrateKbps, input.lowOverhead ?? false),
     ...(audioPipe ? ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000'] : []),
@@ -97,9 +113,9 @@ export function buildRingArgs(input: RingArgsInput): string[] {
   ]
 }
 
-function audioGraph(): string {
+function audioGraph(inputIdx: number): string {
   return [
-    '[0:a]channelsplit=channel_layout=quad[sl][sr][ml][mr]',
+    `[${inputIdx}:a]channelsplit=channel_layout=quad[sl][sr][ml][mr]`,
     '[sl][sr]join=inputs=2:channel_layout=stereo[sys]',
     '[ml][mr]join=inputs=2:channel_layout=stereo[mic]',
     // normalize=0 matters: the default divides by the input count, so turning
@@ -108,9 +124,10 @@ function audioGraph(): string {
   ].join(';')
 }
 
-function audioMaps(input: RingArgsInput): string[] {
-  if (!input.audioPipe) return ['-map', '[v]']
-  return ['-map', '[v]', '-map', '[amix]']
+function audioMaps(input: RingArgsInput, gdi: boolean): string[] {
+  const video = gdi ? ['-map', '0:v'] : ['-map', '[v]']
+  if (!input.audioPipe) return video
+  return [...video, '-map', '[amix]']
 }
 
 function encoderArgs(

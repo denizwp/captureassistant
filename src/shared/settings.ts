@@ -2,6 +2,8 @@ export type CodecId = 'h264' | 'hevc' | 'av1'
 export type QualityPreset = 'low' | 'balanced' | 'high'
 export type IndicatorCorner = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
 
+export type CaptureMethod = 'auto' | 'gdi'
+
 export interface CaptureSettings {
   monitorId: string | null
   fps: number
@@ -10,6 +12,14 @@ export interface CaptureSettings {
   codec: CodecId
 
   preset: QualityPreset
+
+  /*
+   * 'auto' is Desktop Duplication, which stays on the GPU and costs almost
+   * nothing. On machines where it hands back a stale frame there is no way to
+   * make it behave, so 'gdi' offers the old BitBlt path instead: it works
+   * everywhere and costs about ten times the CPU.
+   */
+  method: CaptureMethod
 }
 
 export interface ReplaySettings {
@@ -82,7 +92,8 @@ export const DEFAULT_SETTINGS: Settings = {
     fps: 60,
     bitrateKbps: 0,
     codec: 'h264',
-    preset: 'balanced'
+    preset: 'balanced',
+    method: 'auto'
   },
   replay: {
     enabled: false,
