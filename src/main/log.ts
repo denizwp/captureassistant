@@ -24,13 +24,26 @@ export function logPath(): string {
  * a restart, so it does not live in %TEMP%, and it has to stay small enough to
  * attach, so it rolls over into a single previous copy.
  */
+/* Local time with the offset: the log has to line up with the clip filenames. */
+function stamp(): string {
+  const now = new Date()
+  const pad = (n: number, width = 2): string => String(n).padStart(width, '0')
+  const offset = -now.getTimezoneOffset()
+  const sign = offset >= 0 ? '+' : '-'
+  return (
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.` +
+    `${pad(now.getMilliseconds(), 3)}${sign}${pad(Math.floor(Math.abs(offset) / 60))}`
+  )
+}
+
 export function write(line: string): void {
   const path = logPath()
   try {
     mkdirSync(logDir(), { recursive: true })
     const size = statSync(path, { throwIfNoEntry: false })?.size ?? 0
     if (size > MAX_BYTES) renameSync(path, `${path}.old`)
-    appendFileSync(path, `${new Date().toISOString()} ${line}\n`)
+    appendFileSync(path, `${stamp()} ${line}\n`)
   } catch {}
 }
 
@@ -47,20 +60,38 @@ async function freeSpace(path: string): Promise<string> {
   }
 }
 
-async function gpus(): Promise<string> {
+/*
+ * One shell for the lot. Each of these has explained a report at some point and
+ * none can be read from inside Electron, but spawning powershell once per item
+ * would put seconds between launching and recording.
+ */
+const PROBE_SCRIPT = [
+  '$ErrorActionPreference = "SilentlyContinue"',
+  'Get-CimInstance Win32_VideoController | ForEach-Object { "gpu=$($_.Name) driver $($_.DriverVersion)" }',
+  '$c = Get-CimInstance Win32_Processor | Select-Object -First 1',
+  '"cpu=$($c.Name) $($c.NumberOfCores)c/$($c.NumberOfLogicalProcessors)t"',
+  "'hags=' + $((Get-ItemProperty 'HKLM:/SYSTEM/CurrentControlSet/Control/GraphicsDrivers').HwSchMode)",
+  "'mpo-testmode=' + $((Get-ItemProperty 'HKLM:/SOFTWARE/Microsoft/Windows/Dwm').OverlayTestMode)",
+  '"elevated=$(([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"',
+  'Get-PhysicalDisk | ForEach-Object { "disk=$($_.DeviceId) $($_.MediaType) $($_.BusType)" }',
+  '$rivals = "obs64","obs32","nvcontainer","OverwolfLauncher","ShareX","Bandicam","Recordly"',
+  'Get-Process | Where-Object { $rivals -contains $_.ProcessName } | Group-Object ProcessName | ForEach-Object { "other-capture=$($_.Name) x$($_.Count)" }'
+].join('; ')
+
+async function systemProbe(): Promise<string[]> {
   try {
-    const { stdout } = await run(
-      'powershell',
-      [
-        '-NoProfile',
-        '-Command',
-        'Get-CimInstance Win32_VideoController | ForEach-Object { "$($_.Name) driver $($_.DriverVersion)" }'
-      ],
-      { timeout: 10_000 }
-    )
-    return stdout.trim().split('\n').map((l) => l.trim()).filter(Boolean).join(' | ') || 'unknown'
+    const { stdout } = await run('powershell', ['-NoProfile', '-Command', PROBE_SCRIPT], {
+      timeout: 15_000
+    })
+    return stdout
+      .split(String.fromCharCode(10))
+      .map((line) => line.trim())
+      .filter(Boolean)
+      // A registry value that was never written comes back blank, which reads
+      // as a failed probe rather than as the default it actually is.
+      .map((line) => (line.endsWith('=') ? `${line}default (not set)` : line))
   } catch {
-    return 'unknown'
+    return ['gpu=unknown']
   }
 }
 
@@ -70,6 +101,12 @@ async function gpus(): Promise<string> {
  * one-off cost of collecting it.
  */
 export async function writeHeader(settings: Settings, ringDir: string, outDir: string): Promise<void> {
+  // Opens the file before anything else can log into it, so a report starts
+  // with what it is a report about; the probed details follow a second later.
+  write('')
+  write(`=== Capture Assistant ${app.getVersion()} ===`)
+  write(`windows ${release()} | electron ${process.versions.electron} | ram ${(totalmem() / 1024 ** 3).toFixed(0)}GB`)
+
   const displays = screen.getAllDisplays()
   const primary = screen.getPrimaryDisplay().id
   const c = settings.capture
@@ -78,10 +115,7 @@ export async function writeHeader(settings: Settings, ringDir: string, outDir: s
   // take a second, and interleaving them with startup logs makes the header
   // hard to read at exactly the moment someone is trying to read it.
   const lines = [
-    '',
-    `=== Capture Assistant ${app.getVersion()} ===`,
-    `windows ${release()} | electron ${process.versions.electron} | ram ${(totalmem() / 1024 ** 3).toFixed(0)}GB`,
-    `gpu: ${await gpus()}`,
+    ...(await systemProbe()),
     `displays: ${displays.length}`,
     ...displays.map(
       (d, i) =>

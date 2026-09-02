@@ -124,6 +124,10 @@ async function startEncoder(): Promise<void> {
     codec: encoder.id
   })
 
+  // The exact command, once per run: without it a report cannot be told apart
+  // from one where the arguments themselves were wrong.
+  log(`ffmpeg ${args.join(' ')}`)
+
   const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   child = proc
   startedAt = Date.now()
