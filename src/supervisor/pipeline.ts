@@ -101,7 +101,9 @@ export function buildRingArgs(input: RingArgsInput): string[] {
       : ['-filter_complex', audioPipe ? `${source}[v];${audioGraph(audioIdx)}` : `${source}[v]`]),
     ...audioMaps(input, gdi),
 
-    ...encoderArgs(encoder, capture, maxrateKbps, input.lowOverhead ?? false),
+    // The low preset is where someone goes when the machine cannot keep up, so
+    // it drops the shader-side encoder work as well as the bitrate.
+    ...encoderArgs(encoder, capture, maxrateKbps, (input.lowOverhead ?? false) || capture.preset === 'low'),
     ...(audioPipe ? ['-c:a', 'aac', '-b:a', '192k', '-ar', '48000'] : []),
 
     '-fps_mode', 'cfr',
