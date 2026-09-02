@@ -200,6 +200,28 @@ export async function runCaptureSelfTest(
     }
   }
 
+  // A short recording is the case that breaks: the restart takes the outage out
+  // of the ring's clock, and a start time captured before it then points past
+  // everything the buffer holds, so no clip comes out at all.
+  const SHORT_SEC = 5
+  log(`short recording across a restart, holding ${SHORT_SEC}s`)
+  const shortBefore = (await readdir(outDir).catch(() => [])).filter((f) => f.endsWith('.mp4')).length
+  supervisor.record(true)
+  await wait(2000)
+  await run('taskkill', ['/f', '/im', 'ffmpeg.exe']).catch(() => undefined)
+  await wait(SHORT_SEC * 1000 - 2000)
+  supervisor.record(false)
+  await wait(12_000)
+  const shortAfter = (await readdir(outDir).catch(() => [])).filter((f) => f.endsWith('.mp4')).length
+  if (shortAfter === shortBefore) {
+    log('  FAILED: a short recording across a restart produced no clip')
+  } else {
+    const short = await newestClip(outDir, 'Kayıt')
+    const length = short ? await durationOf(short) : null
+    log(`  clip ${length?.toFixed(2) ?? '?'}s from a ${SHORT_SEC}s hold`)
+    log(length !== null && length > 0.5 ? '  OK: short recording survives a restart' : '  FAILED: clip is empty')
+  }
+
   supervisor.arm(false)
   await wait(1500)
 
