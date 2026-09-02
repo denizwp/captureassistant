@@ -85,8 +85,16 @@ export class Ring {
    * once at start is enough and cannot drift. Deriving it from observations
    * instead let a single early poll skew the estimate permanently.
    */
-  markEncoderStart(): void {
+  /*
+   * Returns how far the clock moved. A restart collapses the outage out of the
+   * timeline, so this is negative there, and anything already holding a
+   * timestamp taken on the old anchor has to be brought along by the same
+   * amount or it ends up pointing outside the buffer.
+   */
+  markEncoderStart(): number {
+    const before = this.timeBase === 0 ? null : this.liveEnd
     this.timeBase = Date.now() - this.newestEnd * 1000
+    return before === null ? 0 : this.liveEnd - before
   }
 
   get liveEnd(): number {

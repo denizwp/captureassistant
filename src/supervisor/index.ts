@@ -127,7 +127,8 @@ async function startEncoder(): Promise<void> {
   const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   child = proc
   startedAt = Date.now()
-  ring.markEncoderStart()
+  const clockShift = ring.markEncoderStart()
+  if (recordStart !== null) recordStart += clockShift
   log(`encoder started (${encoder.id})`, 'success')
 
   health = new CaptureHealth()
