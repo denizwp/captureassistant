@@ -173,6 +173,19 @@ function encoderArgs(
         ...keyframes
       ]
     }
+    /*
+     * Lookahead and B-frame pyramids run on the GPU's shaders rather than on
+     * the encode block. Measured on a card with room to spare they buy nothing
+     * — the same 0.97x of real time either way — while on a busy or smaller one
+     * they have been seen to drag the whole pipeline down to a fraction of real
+     * time. Only the high preset, where someone asked for quality, pays for
+     * them. Spatial AQ stays: it is what keeps flat areas and text clean.
+     */
+    const quality =
+      capture.preset === 'high'
+        ? ['-bf', '2', '-b_ref_mode', 'middle', '-rc-lookahead', '20']
+        : ['-bf', '2', '-rc-lookahead', '0']
+
     return [
       '-c:v', encoder.id,
 
@@ -180,9 +193,7 @@ function encoderArgs(
       '-tune', 'hq',
       ...(capture.codec === 'h264' ? ['-profile:v', 'high'] : []),
       ...rateControl,
-      '-bf', '2',
-      '-b_ref_mode', 'middle',
-      '-rc-lookahead', '20',
+      ...quality,
       '-spatial-aq', '1',
       '-aq-strength', '8',
       ...keyframes
