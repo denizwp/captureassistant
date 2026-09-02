@@ -147,7 +147,12 @@ async function startEncoder(): Promise<void> {
     const now = Date.now()
     if (now - healthLoggedAt > 30_000) {
       healthLoggedAt = now
-      log(`capture ${fps.toFixed(1)}/${target} fps, ${kbps.toFixed(0)} kbps`)
+      const counters = monitor.counters
+      log(
+        `capture ${fps.toFixed(1)}/${target} fps, ${kbps.toFixed(0)} kbps, ` +
+          `${(monitor.speed ?? 0).toFixed(2)}x real time` +
+          (counters ? ` (${counters.frames} frames, ${counters.dups} padded)` : '')
+      )
     }
 
     /*

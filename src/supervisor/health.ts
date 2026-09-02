@@ -82,6 +82,28 @@ export class CaptureHealth {
    * between the frames it does get, while a still desktop compresses to
    * nothing.
    */
+  /*
+   * How much footage the encoder produced per second of real time. This is the
+   * number that says a recording will come out short: the capture can be
+   * handing over perfectly fresh frames and still only manage a fraction of a
+   * second of video per second.
+   */
+  get speed(): number | null {
+    const span = this.span
+    if (!span) return null
+    return (span.last.outMs - span.first.outMs) / 1000 / span.seconds
+  }
+
+  /* Raw counters over the window, so a report is not hostage to the arithmetic above. */
+  get counters(): { frames: number; dups: number } | null {
+    const span = this.span
+    if (!span) return null
+    return {
+      frames: span.last.frames - span.first.frames,
+      dups: span.last.dups - span.first.dups
+    }
+  }
+
   get kbps(): number | null {
     const span = this.span
     if (!span) return null

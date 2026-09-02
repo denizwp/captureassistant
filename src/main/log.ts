@@ -89,7 +89,7 @@ export async function writeHeader(settings: Settings, ringDir: string, outDir: s
         `at ${d.bounds.x},${d.bounds.y} scale ${d.scaleFactor}` +
         `${d.id === primary ? ' primary' : ''} ${d.colorSpace}`
     ),
-    `capture: monitor ${c.monitorId ?? 'auto'} ${c.fps}fps ${c.codec} ${c.preset} bitrate ${c.bitrateKbps || 'auto'}`,
+    `capture: ${c.method} | monitor ${c.monitorId ?? 'auto'} ${c.fps}fps ${c.codec} ${c.preset} bitrate ${c.bitrateKbps || 'auto'}`,
     `replay: ${settings.replay.enabled ? 'on' : 'off'} ${settings.replay.durationSec}s +${settings.replay.postRollSec}s`,
     `audio: system ${settings.audio.systemEnabled ? 'on' : 'off'} gain ${settings.audio.systemGain} | ` +
       `mic ${settings.audio.micEnabled ? 'on' : 'off'} gain ${settings.audio.micGain} device ${settings.audio.micDeviceId ?? 'default'}`,
