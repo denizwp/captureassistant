@@ -55,8 +55,6 @@ let consecutiveFailures = 0
 let startedAt = 0
 let health: CaptureHealth | null = null
 let healthLoggedAt = 0
-let warnedSlowCapture = false
-let lowOverhead = false
 
 const HEALTHY_RUN_MS = 5000
 const MAX_FAST_FAILURES = 4
@@ -116,8 +114,7 @@ async function startEncoder(): Promise<void> {
     startNumber: ring.nextSegmentNumber,
     drawMouse: true,
 
-    audioPipe: audioDisabled ? null : audioPipe,
-    lowOverhead
+    audioPipe: audioDisabled ? null : audioPipe
   })
 
   await ring.beginRun({
@@ -136,7 +133,6 @@ async function startEncoder(): Promise<void> {
 
   health = new CaptureHealth()
   healthLoggedAt = 0
-  warnedSlowCapture = false
   const monitor = health
   proc.stdout?.on('data', (chunk: Buffer) => {
     if (health !== monitor) return
@@ -154,27 +150,15 @@ async function startEncoder(): Promise<void> {
       log(`capture ${fps.toFixed(1)}/${target} fps, ${kbps.toFixed(0)} kbps`)
     }
 
-    // Both halves are needed: a screen nobody is touching also samples slowly,
-    // and it is the bitrate that says the picture was actually moving.
-    if (warnedSlowCapture || fps >= target * 0.6 || kbps < 2000) return
-    warnedSlowCapture = true
-    log(`capture starved: ${fps.toFixed(1)}/${target} fps at ${kbps.toFixed(0)} kbps`, 'warning')
-
-    // Try the cheap encoder settings once before saying anything: on a card with
-    // no room left they are what the capture is queueing behind. The rate keeps
-    // being logged either way, so the next session says whether it helped.
-    if (!lowOverhead) {
-      lowOverhead = true
-      log('retrying with the low-overhead encoder settings', 'warning')
-      void restartEncoder()
-      return
-    }
-
-    toast(
-      'warning',
-      `Ekran yakalama ${Math.round(fps)} fps'e düştü — kayıt takılabilir. ` +
-        'Oyun tam ekran modundaysa kenarlıksız pencereyi dene.'
-    )
+    /*
+     * No warning is raised from these numbers. Desktop Duplication only hands
+     * over a frame when the screen changes, so a low rate is the correct
+     * reading for anyone looking at a still desktop, and bitrate does not
+     * separate the two either — a desktop with a window open still encodes to
+     * megabits. Acting on it would restart the encoder, and a gap in the buffer
+     * is a real cost paid for a guess. The numbers go to the log so a report
+     * can be read against what the person says was on screen.
+     */
   })
 
   // A spawn that never gets off the ground emits 'error', and an 'error' with
@@ -325,13 +309,6 @@ async function recoverFromEmptyOutput(): Promise<void> {
   fail('Ekran kaydı başlatılamadı — ekran yakalama hiç görüntü vermedi.')
 }
 
-async function restartEncoder(): Promise<void> {
-  if (restarting || stopping || state === 'idle') return
-  await stopEncoder()
-  stopping = false
-  await startEncoder().catch((error: unknown) => fail(String(error)))
-}
-
 async function watchForStall(): Promise<void> {
   if (!ring || !child || startedAt === 0) return
   if (ring.newestEnd > 0) return
@@ -432,7 +409,6 @@ async function setArmed(enabled: boolean): Promise<void> {
     consecutiveFailures = 0
     audioDisabled = false
     reprobed = false
-    lowOverhead = false
     await startEncoder()
   } else {
     if (state === 'recording') await stopRecording()
