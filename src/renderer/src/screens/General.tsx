@@ -143,6 +143,23 @@ export function GeneralScreen({
               }
             />
           </Section>
+
+          <Section title="Sorun bildirme">
+            <Setting
+              label="Günlük dosyası"
+              hint="Bir sorun yaşarsan bu dosyayı gönder — ne olduğu içinde yazıyor."
+              control={
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={() => void api.revealLog()}
+                >
+                  <i className="ph ph-folder-open" />
+                  Günlüğü göster
+                </button>
+              }
+            />
+          </Section>
         </div>
       </div>
     </main>

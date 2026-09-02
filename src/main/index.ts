@@ -4,7 +4,7 @@ import { discardLegacyUserData, SettingsStore } from './store'
 import { beginQuit, createMainWindow } from './windows'
 import { broadcast, registerIpc } from './ipc'
 import { AudioEngine } from './audio'
-import { SupervisorHost } from './supervisor'
+import { ringDirFor, SupervisorHost } from './supervisor'
 import { TrayController } from './tray'
 import { HotkeyManager } from './hotkeys'
 import { Overlay } from './overlay'
@@ -14,6 +14,7 @@ import { pruneThumbnails } from './thumbnails'
 import { AppAudioCapture } from './app-audio'
 import { checkForUpdate, discardOldBuild, runUpdateSelfTest } from './updater'
 import { Hud } from './hud'
+import { logEntry, writeHeader } from './log'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
 
@@ -195,6 +196,13 @@ if (!singleInstance) {
       app.quit()
       return
     }
+
+    supervisor.on('log', (entry: { level: string; line: string }) => logEntry(entry.level, entry.line))
+    supervisor.on('toast', (t: { kind: string; message: string }) => logEntry(t.kind, `toast: ${t.message}`))
+    supervisor.on('clip', (clip: { path: string; durationSec: number }) =>
+      logEntry('info', `clip written: ${clip.path} (${clip.durationSec.toFixed(1)}s)`)
+    )
+    void writeHeader(store.get(), ringDirFor(store.get()), store.get().output.dir ?? '')
 
     supervisor.start(store.get())
 

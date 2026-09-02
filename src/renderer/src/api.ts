@@ -26,6 +26,7 @@ interface CaptureApi {
   openClip(path: string): Promise<void>
   deleteClip(path: string): Promise<void>
   revealClipFolder(): Promise<void>
+  revealLog(): Promise<void>
   toggleReplayBuffer(enabled: boolean): Promise<void>
   toggleRecording(): Promise<void>
   saveReplay(): Promise<void>

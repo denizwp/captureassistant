@@ -1,6 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { readdir, rm, stat } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
+import { logPath, write } from './log'
 import type { DeepPartial } from '@shared/ipc'
 import type { Settings } from '@shared/settings'
 import type { Clip } from '@shared/state'
@@ -119,6 +121,16 @@ export function registerIpc(
     broadcast('clips', await listClips(outputDir()))
   })
   ipcMain.handle('clips:reveal-folder', () => shell.openPath(outputDir()))
+
+  // Reveals rather than opens: the point is to let someone attach the file to a
+  // report, and Explorer hands it over with one drag.
+  ipcMain.handle('logs:reveal', async () => {
+    const path = logPath()
+    if (!existsSync(path)) {
+      write('log requested before anything was written')
+    }
+    shell.showItemInFolder(path)
+  })
 
   ipcMain.handle('monitors:list', () =>
     screen.getAllDisplays().map((d, i) => ({

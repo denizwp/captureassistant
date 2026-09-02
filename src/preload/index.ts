@@ -19,6 +19,7 @@ const api = {
   openClip: (path: string) => ipcRenderer.invoke('clips:open', path),
   deleteClip: (path: string) => ipcRenderer.invoke('clips:delete', path),
   revealClipFolder: () => ipcRenderer.invoke('clips:reveal-folder'),
+  revealLog: () => ipcRenderer.invoke('logs:reveal'),
 
   toggleReplayBuffer: (enabled: boolean) =>
     ipcRenderer.invoke('capture:toggle-replay', enabled) as Promise<void>,
