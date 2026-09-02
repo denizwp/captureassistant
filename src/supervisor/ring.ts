@@ -104,7 +104,15 @@ export class Ring {
 
   get liveEnd(): number {
     if (this.timeBase === 0) return this.newestEnd
-    return (Date.now() - this.timeBase) / 1000
+    const wall = (Date.now() - this.timeBase) / 1000
+    /*
+     * The clock runs on wall time so a cut point does not lose the segment
+     * still being written. When the encoder cannot keep up with real time,
+     * though, that would point past everything on disk and the cut comes back
+     * empty — so it can never promise more than the segment being written plus
+     * the one the reader has not caught up with yet.
+     */
+    return Math.min(wall, this.newestEnd + SEGMENT_SEC * 2)
   }
 
   /*
@@ -214,6 +222,14 @@ export class Ring {
     if (elapsed < 2) return
 
     const rate = (this.writtenBytes - this.lastBytes) / elapsed
+
+    // The first window counts everything written since the encoder started
+    // against a couple of seconds, which reads as a burst that never happened.
+    if (this.lastBytes === 0 && this.writtenBytes > 0) {
+      this.lastBytes = this.writtenBytes
+      this.lastBytesAt = now
+      return
+    }
 
     this.bytesPerSec = this.bytesPerSec > 0 ? this.bytesPerSec * 0.6 + rate * 0.4 : rate
     this.lastBytes = this.writtenBytes

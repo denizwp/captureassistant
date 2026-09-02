@@ -56,6 +56,7 @@ let startedAt = 0
 let health: CaptureHealth | null = null
 let healthLoggedAt = 0
 let warnedSlowCapture = false
+let lowOverhead = false
 
 const HEALTHY_RUN_MS = 5000
 const MAX_FAST_FAILURES = 4
@@ -115,7 +116,8 @@ async function startEncoder(): Promise<void> {
     startNumber: ring.nextSegmentNumber,
     drawMouse: true,
 
-    audioPipe: audioDisabled ? null : audioPipe
+    audioPipe: audioDisabled ? null : audioPipe,
+    lowOverhead
   })
 
   await ring.beginRun({
@@ -157,6 +159,17 @@ async function startEncoder(): Promise<void> {
     if (warnedSlowCapture || fps >= target * 0.6 || kbps < 2000) return
     warnedSlowCapture = true
     log(`capture starved: ${fps.toFixed(1)}/${target} fps at ${kbps.toFixed(0)} kbps`, 'warning')
+
+    // Try the cheap encoder settings once before saying anything: on a card with
+    // no room left they are what the capture is queueing behind. The rate keeps
+    // being logged either way, so the next session says whether it helped.
+    if (!lowOverhead) {
+      lowOverhead = true
+      log('retrying with the low-overhead encoder settings', 'warning')
+      void restartEncoder()
+      return
+    }
+
     toast(
       'warning',
       `Ekran yakalama ${Math.round(fps)} fps'e düştü — kayıt takılabilir. ` +
@@ -312,6 +325,13 @@ async function recoverFromEmptyOutput(): Promise<void> {
   fail('Ekran kaydı başlatılamadı — ekran yakalama hiç görüntü vermedi.')
 }
 
+async function restartEncoder(): Promise<void> {
+  if (restarting || stopping || state === 'idle') return
+  await stopEncoder()
+  stopping = false
+  await startEncoder().catch((error: unknown) => fail(String(error)))
+}
+
 async function watchForStall(): Promise<void> {
   if (!ring || !child || startedAt === 0) return
   if (ring.newestEnd > 0) return
@@ -412,6 +432,7 @@ async function setArmed(enabled: boolean): Promise<void> {
     consecutiveFailures = 0
     audioDisabled = false
     reprobed = false
+    lowOverhead = false
     await startEncoder()
   } else {
     if (state === 'recording') await stopRecording()
@@ -455,8 +476,10 @@ async function startRecording(): Promise<void> {
 async function stopRecording(): Promise<void> {
   if (state !== 'recording' || !ring || !settings || !encoder) return
 
-  // Read the cut points before anything is awaited, or the clip drifts behind
-  // whatever the wait costs us.
+  // Catch the reader up first so the clock is measured against segments that
+  // exist, then read the cut points before anything else is awaited or the clip
+  // drifts behind whatever the wait costs us.
+  await ring.poll()
   const from = recordStart ?? 0
   const to = ring.liveEnd
   recordStart = null
