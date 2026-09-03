@@ -10,13 +10,20 @@
  * Both go through Media Foundation, which is already doing the encoding, so
  * dropping the 139MB ffmpeg would follow from finishing this.
  *
- * NOT IN USE YET. Copying one segment is exact — 107 of 107 pictures and 95 of
- * 95 sounds, matching the source frame for frame. Joining several is not: every
- * sample after the first file is accepted by WriteSample and then quietly left
- * out of the finished file, so six seconds of three segments comes back holding
- * only the first. The segments share codec, profile, level and size, so it is
- * not a mismatch between them. Until that is understood, clips are still
- * assembled by ffmpeg, which does it correctly.
+ * NOT IN USE YET. One segment copies exactly: 107 of 107 pictures and 95 of 95
+ * sounds, matching the source frame for frame. Joining several does not. Six
+ * seconds of seven segments hands 101 video samples to WriteSample, every call
+ * succeeds, and the finished file holds 36 — one segment's worth. The container
+ * timeline is right (6.0160s against ffmpeg's 6.0159s) and the sound survives
+ * (282 of 289), so it is the video samples from the second file onwards that
+ * are accepted and then left out, with no error to say why.
+ *
+ * Ruled out: the segments agree on codec, profile, level and size; timestamps
+ * advance by each file's measured end; the writer's live pacing is disabled;
+ * every stream is read to its own end rather than stopping at the first; and
+ * declaring the output from the newest segment's type rather than the first
+ * changes nothing. Until this is understood clips are assembled by ffmpeg,
+ * which does it correctly.
  */
 #include <windows.h>
 #include <mfapi.h>
@@ -101,6 +108,21 @@ int Concat(const std::wstring& listPath, const std::wstring& outPath, double sta
     return kExitUsage;
   }
 
+  /*
+   * The streams are declared from the newest segment, not the first. Media
+   * Foundation carries per-file details in the type it hands back, and samples
+   * that do not match the one the output was declared with are accepted and
+   * then dropped.
+   */
+  std::wstring typeSource = files.back();
+  for (auto it = files.rbegin(); it != files.rend(); ++it) {
+    com_ptr<IMFSourceReader> probe;
+    if (SUCCEEDED(MFCreateSourceReaderFromURL(it->c_str(), nullptr, probe.put()))) {
+      typeSource = *it;
+      break;
+    }
+  }
+
   com_ptr<IMFSinkWriter> writer;
   std::vector<StreamMap> streams;
   int64_t offset = 0;
@@ -116,22 +138,32 @@ int Concat(const std::wstring& listPath, const std::wstring& outPath, double sta
     com_ptr<IMFSourceReader> reader;
     HRESULT hr = MFCreateSourceReaderFromURL(file.c_str(), nullptr, reader.put());
     if (FAILED(hr)) {
-      Fail("open segment", hr);
-      return kExitFailed;
+      // A segment still being written, or left truncated by a crash, has no
+      // index yet and cannot be read. Losing two seconds beats losing the clip.
+      Fail("skipping an unreadable segment", hr);
+      continue;
     }
 
     if (!opened) {
       com_ptr<IMFAttributes> attributes;
-      MFCreateAttributes(attributes.put(), 1);
+      MFCreateAttributes(attributes.put(), 2);
       attributes->SetGUID(MF_TRANSCODE_CONTAINERTYPE, MFTranscodeContainerType_MPEG4);
+      // Without this the writer paces itself as though it were recording live,
+      // and a file's worth of samples handed over at once is accepted and then
+      // largely left out of the finished mp4.
+      attributes->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, 1);
       hr = MFCreateSinkWriterFromURL(outPath.c_str(), nullptr, attributes.get(), writer.put());
       if (FAILED(hr)) {
         Fail("create output", hr);
         return kExitFailed;
       }
+      com_ptr<IMFSourceReader> shape;
+      if (FAILED(MFCreateSourceReaderFromURL(typeSource.c_str(), nullptr, shape.put()))) {
+        shape = reader;
+      }
       for (DWORD index = 0;; index++) {
         com_ptr<IMFMediaType> native;
-        if (FAILED(reader->GetNativeMediaType(index, 0, native.put()))) break;
+        if (FAILED(shape->GetNativeMediaType(index, 0, native.put()))) break;
         GUID major{};
         native->GetGUID(MF_MT_MAJOR_TYPE, &major);
         const bool video = major == MFMediaType_Video;
@@ -162,7 +194,10 @@ int Concat(const std::wstring& listPath, const std::wstring& outPath, double sta
      * rejected for arriving out of order.
      */
     int64_t fileEnd = offset;
-    for (;;) {
+    // Sound and pictures do not run out together, so the file is done only once
+    // every stream has said so; stopping at the first loses the other's tail.
+    size_t finished = 0;
+    while (finished < streams.size()) {
       DWORD actualStream = 0;
       DWORD flags = 0;
       LONGLONG timestamp = 0;
@@ -173,7 +208,7 @@ int Concat(const std::wstring& listPath, const std::wstring& outPath, double sta
         Fail("read sample", hr);
         return kExitFailed;
       }
-      if (flags & MF_SOURCE_READERF_ENDOFSTREAM) break;
+      if (flags & MF_SOURCE_READERF_ENDOFSTREAM) finished++;
       if (!sample) continue;
 
       const StreamMap* mapped = nullptr;
