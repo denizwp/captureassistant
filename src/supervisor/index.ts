@@ -640,6 +640,7 @@ async function buildClip(from: number, to: number, label: string): Promise<void>
     } else {
       toast('success', `${length} kaydedildi.`)
     }
+    if (result.note) log(result.note, 'info')
     log(`clip written: ${result.path}`, 'success')
     send({ type: 'clip', path: result.path, durationSec: result.durationSec })
   } catch (error) {

@@ -24,6 +24,8 @@ export interface AssembleResult {
   durationSec: number
 
   trimmedReason: 'buffer-filling' | 'settings-changed' | null
+  /* What the joiner reported about the cut, for the log. */
+  note: string | null
 }
 
 let jobId = 0
@@ -75,14 +77,14 @@ export async function assemble(ring: Ring, request: AssembleRequest): Promise<As
     if (usable.some((segment: Segment) => segment.file.toLowerCase().endsWith('.mp4'))) {
       const lines = usable.map((segment: Segment) => segment.file)
       await writeFile(listPath, `${lines.join('\n')}\n`, 'utf8')
-      await run(request.mux, [
+      const said = await run(request.mux, [
         'concat',
         '--list', listPath,
         '--out', outPath,
         '--start', Math.max(0, from - first.start).toFixed(3),
         '--duration', duration.toFixed(3)
       ])
-      return { path: outPath, durationSec: duration, trimmedReason }
+      return { path: outPath, durationSec: duration, trimmedReason, note: said }
     }
 
     const offsetIntoFirst = from - first.start
@@ -107,7 +109,7 @@ export async function assemble(ring: Ring, request: AssembleRequest): Promise<As
       ...tail.map((segment: Segment) => segment.file)
     ])
 
-    return { path: outPath, durationSec: duration, trimmedReason }
+    return { path: outPath, durationSec: duration, trimmedReason, note: null }
   } catch (error) {
     // The list names the exact segments a failed join was given, which is the
     // only way to reproduce it once the ring has moved on.
@@ -175,7 +177,7 @@ async function concatInto(ffmpeg: string, args: string[], files: string[]): Prom
   await finished
 }
 
-function run(command: string, args: string[]): Promise<void> {
+function run(command: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ['ignore', 'ignore', 'pipe'] })
     let stderr = ''
@@ -184,7 +186,7 @@ function run(command: string, args: string[]): Promise<void> {
     })
     child.on('error', reject)
     child.on('close', (code) => {
-      if (code === 0) resolve()
+      if (code === 0) resolve(stderr.trim())
       else reject(new Error(`${basename(command)} ${code}: ${stderr.trim().slice(0, 400)}`))
     })
   })

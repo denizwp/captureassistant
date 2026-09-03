@@ -170,7 +170,13 @@ int Join(const std::vector<com_ptr<IMFSourceReader>>& readers, IMFSourceReader* 
   int64_t written = 0;
   long long readVideo = 0, wroteVideo = 0, readAudio = 0, wroteAudio = 0;
   bool opened = false;
-  bool started = startTicks <= 0;
+  /*
+   * The clip begins at the first picture, never merely at the first sound. An
+   * engine that has just restarted is already passing audio through while the
+   * screen has not handed over a frame yet, and counting the requested length
+   * from there spends all of it on a stretch that has no picture in it.
+   */
+  bool started = false;
   bool enough = false;
   int64_t firstOut = -1, lastOut = 0;
 
