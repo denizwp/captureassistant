@@ -67,6 +67,8 @@ async function main() {
   for (const rel of [
     'Capture Assistant.exe',
     'resources/app.asar.unpacked/out/main/supervisor.js',
+    'resources/ca-capture.exe',
+    'resources/ca-mux.exe',
     'resources/ffmpeg/ffmpeg.exe'
   ]) {
     if (!(await stat(join(unpacked, rel)).catch(() => null))) {
