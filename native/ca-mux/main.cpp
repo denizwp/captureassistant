@@ -136,13 +136,25 @@ int64_t StartOfCut(IMFSourceReader* reader, int64_t startTicks) {
   return best < 0 ? 0 : best;
 }
 
-void Rewind(const std::vector<com_ptr<IMFSourceReader>>& readers) {
-  PROPVARIANT start;
-  PropVariantInit(&start);
-  start.vt = VT_I8;
-  start.hVal.QuadPart = 0;
-  for (const auto& reader : readers) reader->SetCurrentPosition(GUID_NULL, start);
-  PropVariantClear(&start);
+/*
+ * A fresh reader per pass rather than seeking one back to the start: seeking
+ * brings the sound back but not the pictures, and a pass that reads no pictures
+ * writes a clip that will not open.
+ */
+std::vector<com_ptr<IMFSourceReader>> OpenAll(const std::vector<std::wstring>& files) {
+  std::vector<com_ptr<IMFSourceReader>> readers;
+  for (const auto& file : files) {
+    com_ptr<IMFSourceReader> opening;
+    HRESULT hr = MFCreateSourceReaderFromURL(file.c_str(), nullptr, opening.put());
+    if (FAILED(hr)) {
+      // A segment still being written, or left truncated by a crash, has no
+      // index yet and cannot be read. Losing two seconds beats losing the clip.
+      Fail("skipping an unreadable segment", hr);
+      continue;
+    }
+    readers.push_back(opening);
+  }
+  return readers;
 }
 
 /*
@@ -159,6 +171,8 @@ int Join(const std::vector<com_ptr<IMFSourceReader>>& readers, IMFSourceReader* 
   long long readVideo = 0, wroteVideo = 0, readAudio = 0, wroteAudio = 0;
   bool opened = false;
   bool started = startTicks <= 0;
+  bool enough = false;
+  int64_t firstOut = -1, lastOut = 0;
 
   HRESULT hr = S_OK;
   for (const auto& reader : readers) {
@@ -252,10 +266,13 @@ int Join(const std::vector<com_ptr<IMFSourceReader>>& readers, IMFSourceReader* 
       }
       if (absolute < written) continue;
       if (wantTicks > 0 && absolute - written >= wantTicks) {
-        // Sound usually runs a little ahead of the pictures, so stopping the
-        // whole job on the first stream to cross the line would clip the tail
-        // off the video. Let that stream finish and keep taking the other.
-        if (mapped->video) break;
+        /*
+         * Past the length asked for, so nothing more is written — but the
+         * segment is still read to its end. Walking away mid-file leaves its
+         * measured end short, and every later segment then lands earlier than
+         * it should and spills content back inside the window.
+         */
+        if (mapped->video) enough = true;
         continue;
       }
 
@@ -267,7 +284,14 @@ int Join(const std::vector<com_ptr<IMFSourceReader>>& readers, IMFSourceReader* 
        * accepts them and then quietly leaves them out of the file.
        */
       const int64_t shift = absolute - written - timestamp;
-      sample->SetSampleTime(absolute - written);
+      const int64_t at = absolute - written;
+      sample->SetSampleTime(at);
+      // A frame stays on screen until the next one replaces it, so the last
+      // frame of a still stretch can be held for half a second. Left alone it
+      // pushes the clip past the length that was asked for.
+      if (wantTicks > 0 && span > 0 && at + span > wantTicks) {
+        sample->SetSampleDuration(wantTicks - at);
+      }
       UINT64 decodeAt = 0;
       if (SUCCEEDED(sample->GetUINT64(MFSampleExtension_DecodeTimestamp, &decodeAt))) {
         sample->SetUINT64(MFSampleExtension_DecodeTimestamp,
@@ -277,9 +301,16 @@ int Join(const std::vector<com_ptr<IMFSourceReader>>& readers, IMFSourceReader* 
         // One rejected sample is not worth losing the clip over.
         continue;
       }
-      if (mapped->video) wroteVideo++; else wroteAudio++;
+      if (mapped->video) {
+        wroteVideo++;
+        if (firstOut < 0) firstOut = absolute - written;
+        lastOut = absolute - written;
+      } else {
+        wroteAudio++;
+      }
     }
     offset = fileEnd;
+    if (enough) break;
   }
 
   *videoOut = wroteVideo;
@@ -291,8 +322,11 @@ int Join(const std::vector<com_ptr<IMFSourceReader>>& readers, IMFSourceReader* 
     Fail("finalize", hr);
     return kExitFailed;
   }
-  std::fprintf(stderr, "copied video %lld of %lld, audio %lld of %lld\n", wroteVideo, readVideo,
-               wroteAudio, readAudio);
+  std::fprintf(stderr,
+               "copied video %lld of %lld, audio %lld of %lld, cut at %.3f spanning %.3f\n",
+               wroteVideo, readVideo, wroteAudio, readAudio,
+               static_cast<double>(written) / kTicksPerSecond,
+               static_cast<double>(lastOut - (firstOut < 0 ? 0 : firstOut)) / kTicksPerSecond);
   return 0;
 }
 
@@ -309,23 +343,20 @@ int Concat(const std::wstring& listPath, const std::wstring& outPath, double sta
     return kExitFailed;
   }
 
+  int64_t startTicks = static_cast<int64_t>(startSec * kTicksPerSecond);
+  const int64_t wantTicks =
+      durationSec > 0 ? static_cast<int64_t>(durationSec * kTicksPerSecond) : 0;
+  if (startTicks > 0) {
+    auto scan = OpenAll({files.front()});
+    startTicks = scan.empty() ? 0 : StartOfCut(scan.front().get(), startTicks);
+  }
+
   /*
    * Every segment is opened before the writer exists and stays open until the
    * clip is finalized. Releasing a reader shuts its media source down, and the
    * writer is still holding that file's samples in its own queue at that point.
    */
-  std::vector<com_ptr<IMFSourceReader>> readers;
-  for (const auto& file : files) {
-    com_ptr<IMFSourceReader> opening;
-    HRESULT open = MFCreateSourceReaderFromURL(file.c_str(), nullptr, opening.put());
-    if (FAILED(open)) {
-      // A segment still being written, or left truncated by a crash, has no
-      // index yet and cannot be read. Losing two seconds beats losing the clip.
-      Fail("skipping an unreadable segment", open);
-      continue;
-    }
-    readers.push_back(opening);
-  }
+  auto readers = OpenAll(files);
   if (readers.empty()) {
     std::fprintf(stderr, "none of the segments could be read\n");
     return kExitFailed;
@@ -337,24 +368,16 @@ int Concat(const std::wstring& listPath, const std::wstring& outPath, double sta
    * that do not match the one the output was declared with are accepted and
    * then dropped.
    */
-  IMFSourceReader* shape = readers.back().get();
-  int64_t startTicks = static_cast<int64_t>(startSec * kTicksPerSecond);
-  const int64_t wantTicks =
-      durationSec > 0 ? static_cast<int64_t>(durationSec * kTicksPerSecond) : 0;
-  if (startTicks > 0) {
-    startTicks = StartOfCut(readers.front().get(), startTicks);
-    Rewind(readers);
-  }
-
   long long wroteVideo = 0;
-  int result = Join(readers, shape, outPath, startTicks, wantTicks, &wroteVideo);
+  int result = Join(readers, readers.back().get(), outPath, startTicks, wantTicks, &wroteVideo);
   if (wroteVideo == 0 && startTicks > 0) {
     // Nothing matched the requested moment, which happens when the ring's clock
     // has drifted past the footage it holds. A clip from the beginning of what
     // is there beats handing back nothing.
     std::fprintf(stderr, "nothing at the requested start, taking it from the top\n");
-    Rewind(readers);
-    result = Join(readers, shape, outPath, 0, wantTicks, &wroteVideo);
+    readers = OpenAll(files);
+    if (readers.empty()) return kExitFailed;
+    result = Join(readers, readers.back().get(), outPath, 0, wantTicks, &wroteVideo);
   }
 
   if (result == 0 && !Decodes(outPath)) {
