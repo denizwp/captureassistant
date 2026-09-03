@@ -225,8 +225,12 @@ class Encoder {
       set(CODECAPI_AVEncCommonMeanBitRate, (opts_.bitrateKbps / 4) * 1000u);
       set(CODECAPI_AVEncCommonMaxBitRate, opts_.bitrateKbps * 1000u);
     }
-    // Two seconds of pictures per keyframe, matching the segment length.
-    set(CODECAPI_AVEncMPVGOPSize, static_cast<ULONG>(opts_.fps * 2));
+    /*
+     * A keyframe every half second. Saving a clip copies the pictures rather
+     * than re-encoding them, so it can only begin on a keyframe: this is what
+     * decides how close to the asked-for moment a clip can start.
+     */
+    set(CODECAPI_AVEncMPVGOPSize, static_cast<ULONG>((std::max)(1, opts_.fps / 2)));
   }
 
   HRESULT Write(IMFSample* sample) {

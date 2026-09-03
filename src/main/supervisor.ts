@@ -26,6 +26,13 @@ export function outDirFor(settings: Settings): string {
   return settings.output.dir ?? join(app.getPath('videos'), 'Capture Assistant')
 }
 
+export function capturePath(): string {
+  const packaged = join(process.resourcesPath, 'ca-capture.exe')
+  return existsSync(packaged)
+    ? packaged
+    : join(app.getAppPath(), 'resources', 'ca-capture.exe')
+}
+
 export function ffmpegPath(): string {
   const packaged = join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe')
   return existsSync(packaged)
@@ -109,6 +116,7 @@ export class SupervisorHost extends EventEmitter {
     this.send({
       type: 'init',
       ffmpeg: ffmpegPath(),
+      capture: capturePath(),
       ringDir: ringDirFor(settings),
       outDir: outDirFor(settings),
       audioPipe: AUDIO_PIPE,

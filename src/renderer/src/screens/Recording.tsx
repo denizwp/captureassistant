@@ -147,15 +147,18 @@ export function RecordingScreen({
                   label="Yakalama yöntemi"
                   hint={
                     capture.method === 'gdi'
-                      ? 'Uyumluluk modu. Ekran kartını atlar, her makinede çalışır, bir çekirdeğin çoğunu yer.'
-                      : 'Ekran kartı üzerinden, neredeyse bedava. Kayıt boş veya donuk çıkıyorsa uyumluluk modunu dene.'
+                      ? 'Ekran kartını atlar, her makinede çalışır, bir çekirdeğin çoğunu yer.'
+                      : capture.method === 'auto'
+                        ? 'Eski yol. Yeni motorda bir sorun çıkarsa buraya dönebilirsin.'
+                        : 'Önerilen. Kareyi yakalandığı anla damgalar, geride kalırsa kare düşürür.'
                   }
                   control={
                     <Segmented<CaptureMethod>
                       value={capture.method}
                       onChange={(method) => patch({ capture: { method } })}
                       options={[
-                        { value: 'auto', label: 'Ekran kartı' },
+                        { value: 'native', label: 'Yeni motor' },
+                        { value: 'auto', label: 'Eski (ffmpeg)' },
                         { value: 'gdi', label: 'Uyumluluk' }
                       ]}
                     />

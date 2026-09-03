@@ -5,6 +5,8 @@ import type { Settings } from '@shared/settings'
 import type { CaptureState, SupervisorState } from '@shared/state'
 import { assemble } from './assembler'
 import { probeCapture, probeEncoder } from './encoders'
+import { appendSegmentLine, buildNativeArgs, createNativeReader,
+  NATIVE_EXIT_SIZE_CHANGED } from './native'
 import { buildRingArgs, PRESET_MAXRATE_KBPS, SEGMENT_SEC, type EncoderChoice } from './pipeline'
 import { CaptureHealth } from './health'
 import { Ring, sweepOrphans } from './ring'
@@ -12,6 +14,7 @@ import { Ring, sweepOrphans } from './ring'
 interface InitMessage {
   type: 'init'
   ffmpeg: string
+  capture: string
   ringDir: string
   outDir: string
   audioPipe: string
@@ -37,6 +40,7 @@ const DISK_HEADROOM_BYTES = 5 * 1024 ** 3
 
 let settings: Settings | null = null
 let ffmpegPath = ''
+let capturePath = ''
 let ringDir = ''
 let outDir = ''
 let audioPipe = ''
@@ -105,41 +109,98 @@ async function startEncoder(): Promise<void> {
 
   await mkdir(ringDir, { recursive: true })
 
-  const args = buildRingArgs({
-    capture: settings.capture,
-    encoder,
-    outputIdx,
-    adapterIdx,
-    ringDir,
-    startNumber: ring.nextSegmentNumber,
-    drawMouse: true,
+  const native = settings.capture.method === 'native' && !!capturePath
+  const args = native
+    ? buildNativeArgs({
+        capture: settings.capture,
+        outputIdx,
+        ringDir,
+        startNumber: ring.nextSegmentNumber,
+        drawMouse: true,
+        audioPipe: audioDisabled ? null : audioPipe
+      })
+    : buildRingArgs({
+        capture: settings.capture,
+        encoder,
+        outputIdx,
+        adapterIdx,
+        ringDir,
+        startNumber: ring.nextSegmentNumber,
+        drawMouse: true,
 
-    audioPipe: audioDisabled ? null : audioPipe
-  })
+        audioPipe: audioDisabled ? null : audioPipe
+      })
 
   await ring.beginRun({
     width: 0,
     height: 0,
     fps: settings.capture.fps,
-    codec: encoder.id,
+    codec: native ? 'native' : encoder.id,
     hasAudio: !audioDisabled
   })
 
   // The exact command, once per run: without it a report cannot be told apart
   // from one where the arguments themselves were wrong.
-  log(`ffmpeg ${args.join(' ')}`)
+  const binary = native ? capturePath : ffmpegPath
+  log(`${native ? 'ca-capture' : 'ffmpeg'} ${args.join(' ')}`)
 
-  const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+  const proc = spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   child = proc
   startedAt = Date.now()
-  const clockShift = ring.markEncoderStart()
-  if (recordStart !== null) recordStart += clockShift
-  log(`encoder started (${encoder.id})`, 'success')
+  /*
+   * The ffmpeg path starts producing the moment it is spawned, but the native
+   * engine spends a second or so building its capture session first and counts
+   * its own timeline from the end of that. Anchoring the ring at spawn would
+   * leave the clock running ahead of the segments by exactly that setup time,
+   * and every cut point taken from it lands past what was written.
+   */
+  const anchor = (): void => {
+    if (!ring) return
+    const shift = ring.markEncoderStart()
+    if (recordStart !== null) recordStart += shift
+  }
+  if (!native) anchor()
+  log(`encoder started (${native ? 'ca-capture' : encoder.id})`, 'success')
+
+  if (native) {
+    /*
+     * The engine names each finished segment on stdout. Writing those into the
+     * same index.csv ffmpeg used keeps the ring, the janitor and every cut point
+     * working without knowing which engine produced the files.
+     */
+    let lastStats = 0
+    const read = createNativeReader({
+      onReady: (line) => {
+        anchor()
+        log(line)
+      },
+      onSegment: (line) => {
+        void appendSegmentLine(ringDir, line).catch((error: unknown) =>
+          log(`could not record segment: ${String(error)}`, 'error')
+        )
+      },
+      onStats: (stats) => {
+        const now = Date.now()
+        if (now - lastStats < 30_000) return
+        lastStats = now
+        const target = settings?.capture.fps ?? 60
+        const rate = stats.wall > 0 ? stats.frames / stats.wall : 0
+        log(
+          `capture ${rate.toFixed(1)}/${target} fps, ` +
+            `${stats.produced.toFixed(2)}s of ${stats.wall.toFixed(2)}s wall` +
+            ` (${stats.dropped} dropped, ${stats.rejected} rejected)`
+        )
+      }
+    })
+    proc.stdout?.on('data', (chunk: Buffer) => read(chunk.toString()))
+  }
 
   health = new CaptureHealth()
   healthLoggedAt = 0
   const monitor = health
-  proc.stdout?.on('data', (chunk: Buffer) => {
+  // ffmpeg's progress stream only exists on the ffmpeg path; the native engine
+  // reports its own numbers above.
+  if (!native) proc.stdout?.on('data', (chunk: Buffer) => {
     if (health !== monitor) return
     monitor.feed(chunk.toString())
     const fps = monitor.effectiveFps
@@ -205,9 +266,11 @@ async function startEncoder(): Promise<void> {
     }
 
     const lived = Date.now() - startedAt
-    // Losing the duplication says nothing about whether we can encode, so it
-    // must not count towards the give-up counter or the back-off.
-    consecutiveFailures = accessLost || lived >= HEALTHY_RUN_MS ? 0 : consecutiveFailures + 1
+    // The display changing size is the native engine's way of asking to be
+    // rebuilt, and losing the duplication says nothing about whether we can
+    // encode. Neither counts towards the give-up counter or the back-off.
+    const rebuild = accessLost || code === NATIVE_EXIT_SIZE_CHANGED
+    consecutiveFailures = rebuild || lived >= HEALTHY_RUN_MS ? 0 : consecutiveFailures + 1
 
     if (consecutiveFailures > MAX_FAST_FAILURES) {
       const detail = stderr.trim().split('\n').filter(Boolean).at(-1) ?? `çıkış kodu ${code}`
@@ -217,14 +280,15 @@ async function startEncoder(): Promise<void> {
       return
     }
 
-    if (accessLost) log(`screen capture lost after ${(lived / 1000).toFixed(1)}s — reclaiming`)
+    if (code === NATIVE_EXIT_SIZE_CHANGED) log('display size changed — rebuilding capture')
+    else if (accessLost) log(`screen capture lost after ${(lived / 1000).toFixed(1)}s — reclaiming`)
     else log(`encoder exited (${code}) after ${(lived / 1000).toFixed(1)}s — restarting`, 'warning')
     if (restarting) return
     restarting = true
 
     // Every millisecond here is a hole in the buffer, and the duplication is
     // ready again as soon as the compositor settles.
-    const delay = accessLost ? 0 : Math.min(400 * 2 ** consecutiveFailures, 5000)
+    const delay = rebuild ? 0 : Math.min(400 * 2 ** consecutiveFailures, 5000)
     setTimeout(() => {
       restarting = false
       void startEncoder().catch((error: unknown) => fail(String(error)))
@@ -369,7 +433,11 @@ async function diskGuard(): Promise<void> {
 
   if (stats.freeDiskBytes > 0 && stats.freeDiskBytes < required) {
     toast('warning', 'Disk doluyor — geçmiş kayıt durduruldu.')
-    log('disk guard tripped, disarming', 'error')
+    log(
+      `disk guard tripped, disarming: ${(stats.freeDiskBytes / 1024 ** 3).toFixed(1)}GB free, ` +
+        `${(required / 1024 ** 3).toFixed(1)}GB needed`,
+      'error'
+    )
     await setArmed(false)
   }
 }
@@ -600,6 +668,7 @@ async function handle(message: Incoming): Promise<void> {
   switch (message.type) {
     case 'init':
       ffmpegPath = message.ffmpeg
+      capturePath = message.capture
       ringDir = message.ringDir
       outDir = message.outDir
       audioPipe = message.audioPipe

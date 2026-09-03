@@ -199,7 +199,7 @@ export class Ring {
   private parse(line: string): Segment | null {
     const [file, start, end] = line.trim().split(',')
     if (!file || start === undefined || end === undefined) return null
-    const match = /seg_(\d+)\.ts$/.exec(file)
+    const match = /seg_(\d+)\.(?:ts|mp4)$/.exec(file)
     if (!match?.[1]) return null
     return {
       index: Number(match[1]),
@@ -351,7 +351,7 @@ export class Ring {
 
     const stale = await readdir(this.dir).catch(() => [] as string[])
     for (const name of stale) {
-      if (/^seg_\d+\.ts$/.test(name)) await unlinkPatiently(join(this.dir, name))
+      if (/^seg_\d+\.(?:ts|mp4)$/.test(name)) await unlinkPatiently(join(this.dir, name))
     }
   }
 }
@@ -373,7 +373,7 @@ export async function sweepOrphans(dir: string): Promise<{ files: number; bytes:
   let bytes = 0
 
   for (const name of names) {
-    if (!/^seg_\d+\.ts$/.test(name) && name !== 'index.csv' && name !== 'runs.json') continue
+    if (!/^seg_\d+\.(?:ts|mp4)$/.test(name) && name !== 'index.csv' && name !== 'runs.json') continue
     const path = join(dir, name)
     const size = await stat(path)
       .then((s) => s.size)

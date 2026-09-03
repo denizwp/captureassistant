@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createReadStream } from 'node:fs'
-import { mkdir, rm, stat } from 'node:fs/promises'
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { CaptureSettings } from '@shared/settings'
 import { buildAssembleArgs, buildHeadArgs, type EncoderChoice } from './pipeline'
@@ -58,9 +58,45 @@ export async function assemble(ring: Ring, request: AssembleRequest): Promise<As
   await mkdir(request.workDir, { recursive: true })
 
   const headPath = join(request.workDir, `${owner}.ts`)
+  const listPath = join(request.workDir, `${owner}.txt`)
   const outPath = join(request.outDir, `${request.name}.mp4`)
 
   try {
+    /*
+     * mp4 segments cannot be joined by pasting their bytes together the way
+     * mpegts could, so those go through the concat demuxer. Copying pictures
+     * rather than re-encoding them means the clip can only begin on a keyframe,
+     * which the engine emits twice a second — close enough that nobody notices,
+     * and without the risk of a re-encoded head whose parameters do not match
+     * the segments behind it.
+     */
+    if (usable.some((segment: Segment) => segment.file.toLowerCase().endsWith('.mp4'))) {
+      const lines = usable.map(
+        (segment: Segment) => `file '${segment.file.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`
+      )
+      await writeFile(listPath, `${lines.join('\n')}\n`, 'utf8')
+      await run(request.ffmpeg, [
+        '-hide_banner',
+        '-v', 'error',
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', listPath,
+        // After the input, not before it: seeking the concat demuxer up front
+        // moves where reading starts but leaves the timestamps alone, so the
+        // head stays in and -t then cuts that much too late. Measured, this
+        // lands within 30ms of the length asked for.
+        '-ss', Math.max(0, from - first.start).toFixed(3),
+        '-map', '0',
+        '-c', 'copy',
+        '-t', duration.toFixed(3),
+        '-avoid_negative_ts', 'make_zero',
+        '-movflags', '+faststart',
+        '-y',
+        outPath
+      ])
+      return { path: outPath, durationSec: duration, trimmedReason }
+    }
+
     const offsetIntoFirst = from - first.start
     let head: string | null = null
     if (offsetIntoFirst > 0.001) {
@@ -87,6 +123,7 @@ export async function assemble(ring: Ring, request: AssembleRequest): Promise<As
   } finally {
     ring.unpin(owner)
     await rm(headPath, { force: true })
+    await rm(listPath, { force: true })
   }
 }
 
