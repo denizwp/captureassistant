@@ -163,14 +163,14 @@ export async function runCaptureSelfTest(
     }
   }
 
-  // A fresh ffmpeg rewrites index.csv from the top with its timestamps back at
-  // zero. If the ring keeps reading from its old offset it goes blind, and the
-  // cut points taken from that timeline come out short and start late.
+  // A restarted engine rewrites index.csv from the top with its timestamps back
+  // at zero. If the ring keeps reading from its old offset it goes blind, and
+  // the cut points taken from that timeline come out short and start late.
   log(`manual recording across an encoder restart, holding ${RECORD_SEC}s`)
   const restartStart = Date.now()
   supervisor.record(true)
   await wait(4000)
-  await run('taskkill', ['/f', '/im', 'ffmpeg.exe']).catch(() => undefined)
+  await run('taskkill', ['/f', '/im', 'ca-capture.exe']).catch(() => undefined)
   log('  killed the encoder mid-recording')
   await wait(RECORD_SEC * 1000 - 4000)
   supervisor.record(false)
@@ -201,7 +201,7 @@ export async function runCaptureSelfTest(
   const shortBefore = (await readdir(outDir).catch(() => [])).filter((f) => f.endsWith('.mp4')).length
   supervisor.record(true)
   await wait(2000)
-  await run('taskkill', ['/f', '/im', 'ffmpeg.exe']).catch(() => undefined)
+  await run('taskkill', ['/f', '/im', 'ca-capture.exe']).catch(() => undefined)
   await wait(SHORT_SEC * 1000 - 2000)
   supervisor.record(false)
   await wait(12_000)
