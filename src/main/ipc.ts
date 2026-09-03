@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
+import { spawn } from 'node:child_process'
 import { readdir, rm, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
@@ -145,11 +146,37 @@ export function registerIpc(
   ipcMain.on('window:close', (e) => BrowserWindow.fromWebContents(e.sender)?.close())
 }
 
+const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'
+const RUN_VALUE = 'Capture Assistant'
+// What setLoginItemSettings used to write under; cleared so an old broken entry
+// does not sit in the startup list next to the working one.
+const LEGACY_RUN_VALUE = 'com.captureassistant.app'
+
+/*
+ * Written by hand rather than through setLoginItemSettings, which puts the path
+ * in unquoted. The installed app lives in "Capture Assistant.exe" — a name with
+ * a space in it — so Windows cannot parse the command line at sign-in, fails it
+ * with ERROR_INVALID_NAME, and the app silently never starts. The portable build
+ * had no space in its path, which is why this only showed up once it moved.
+ */
 function applyLaunchAtLogin(enabled: boolean): void {
-  app.setLoginItemSettings({
-    openAtLogin: enabled,
-    args: ['--hidden']
-  })
+  const reg = (args: string[]): void => {
+    const child = spawn('reg', args, { stdio: 'ignore', windowsHide: true })
+    child.on('error', () => undefined)
+  }
+
+  reg(['delete', RUN_KEY, '/v', LEGACY_RUN_VALUE, '/f'])
+  if (enabled) {
+    reg([
+      'add', RUN_KEY,
+      '/v', RUN_VALUE,
+      '/t', 'REG_SZ',
+      '/d', `"${process.execPath}" --hidden`,
+      '/f'
+    ])
+  } else {
+    reg(['delete', RUN_KEY, '/v', RUN_VALUE, '/f'])
+  }
 }
 
 function defaultOutputDir(): string {
