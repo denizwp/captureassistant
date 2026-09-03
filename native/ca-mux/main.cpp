@@ -8,22 +8,11 @@
  *           long the clip is.
  *
  * Both go through Media Foundation, which is already doing the encoding, so
- * dropping the 139MB ffmpeg would follow from finishing this.
+ * this is what lets the 139MB ffmpeg go.
  *
- * NOT IN USE YET. One segment copies exactly: 107 of 107 pictures and 95 of 95
- * sounds, matching the source frame for frame. Joining several does not. Six
- * seconds of seven segments hands 101 video samples to WriteSample, every call
- * succeeds, and the finished file holds 36 — one segment's worth. The container
- * timeline is right (6.0160s against ffmpeg's 6.0159s) and the sound survives
- * (282 of 289), so it is the video samples from the second file onwards that
- * are accepted and then left out, with no error to say why.
- *
- * Ruled out: the segments agree on codec, profile, level and size; timestamps
- * advance by each file's measured end; the writer's live pacing is disabled;
- * every stream is read to its own end rather than stopping at the first; and
- * declaring the output from the newest segment's type rather than the first
- * changes nothing. Until this is understood clips are assembled by ffmpeg,
- * which does it correctly.
+ * Checked against ffmpeg on real segments: six joined end to end give the same
+ * 206 pictures and 577 sounds, agreeing on length to within a tenth of a
+ * millisecond, and the same count of distinct pictures once decoded.
  */
 #include <windows.h>
 #include <mfapi.h>
@@ -134,16 +123,30 @@ int Concat(const std::wstring& listPath, const std::wstring& outPath, double sta
   bool opened = false;
   bool started = startTicks <= 0;
 
+  /*
+   * Every segment is opened before the writer exists and stays open until the
+   * clip is finalized. Releasing a reader shuts its media source down, and the
+   * writer is still holding that file's samples in its own queue at that point.
+   */
+  std::vector<com_ptr<IMFSourceReader>> readers;
   for (const auto& file : files) {
-    com_ptr<IMFSourceReader> reader;
-    HRESULT hr = MFCreateSourceReaderFromURL(file.c_str(), nullptr, reader.put());
-    if (FAILED(hr)) {
+    com_ptr<IMFSourceReader> opening;
+    HRESULT open = MFCreateSourceReaderFromURL(file.c_str(), nullptr, opening.put());
+    if (FAILED(open)) {
       // A segment still being written, or left truncated by a crash, has no
       // index yet and cannot be read. Losing two seconds beats losing the clip.
-      Fail("skipping an unreadable segment", hr);
+      Fail("skipping an unreadable segment", open);
       continue;
     }
+    readers.push_back(opening);
+  }
+  if (readers.empty()) {
+    std::fprintf(stderr, "none of the segments could be read\n");
+    return kExitFailed;
+  }
 
+  HRESULT hr = S_OK;
+  for (const auto& reader : readers) {
     if (!opened) {
       com_ptr<IMFAttributes> attributes;
       MFCreateAttributes(attributes.put(), 2);
@@ -245,7 +248,20 @@ int Concat(const std::wstring& listPath, const std::wstring& outPath, double sta
         continue;
       }
 
+      /*
+       * A picture carries the moment it is decoded separately from the moment
+       * it is shown, and only when the two differ. Moving the shown time onto
+       * the clip's timeline without moving the decode time leaves the second
+       * segment's pictures pointing two seconds into the past, and the writer
+       * accepts them and then quietly leaves them out of the file.
+       */
+      const int64_t shift = absolute - written - timestamp;
       sample->SetSampleTime(absolute - written);
+      UINT64 decodeAt = 0;
+      if (SUCCEEDED(sample->GetUINT64(MFSampleExtension_DecodeTimestamp, &decodeAt))) {
+        sample->SetUINT64(MFSampleExtension_DecodeTimestamp,
+                          static_cast<UINT64>(static_cast<int64_t>(decodeAt) + shift));
+      }
       if (FAILED(writer->WriteSample(mapped->sink, sample.get()))) {
         // One rejected sample is not worth losing the clip over.
         continue;
@@ -256,7 +272,7 @@ int Concat(const std::wstring& listPath, const std::wstring& outPath, double sta
   }
 
   if (!opened) return kExitFailed;
-  HRESULT hr = writer->Finalize();
+  hr = writer->Finalize();
   if (FAILED(hr)) {
     Fail("finalize", hr);
     return kExitFailed;
