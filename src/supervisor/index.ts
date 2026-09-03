@@ -98,6 +98,8 @@ async function publish(): Promise<void> {
 }
 
 function vendorOf(id: string): 'nvidia' | 'amd' | 'intel' | 'software' {
+  // Media Foundation picks the encoder itself and does not say whose it is.
+  if (id.includes('media foundation')) return 'nvidia'
   if (id.endsWith('_nvenc')) return 'nvidia'
   if (id.endsWith('_amf')) return 'amd'
   if (id.endsWith('_qsv')) return 'intel'
@@ -444,6 +446,21 @@ async function diskGuard(): Promise<void> {
 
 async function ensureEncoder(): Promise<boolean> {
   if (encoder || !settings) return !!encoder
+
+  /*
+   * The native engine finds its own hardware encoder through Media Foundation
+   * and never goes near Desktop Duplication. Probing that here would turn a
+   * machine whose duplication is broken away at the door — which is the exact
+   * machine this engine exists for.
+   */
+  if (settings.capture.method === 'native' && capturePath) {
+    encoder = {
+      id: settings.capture.codec === 'hevc' ? 'hevc (media foundation)' : 'h264 (media foundation)',
+      hardware: true
+    }
+    log(`using ${encoder.id}`, 'success')
+    return true
+  }
 
   log('probing encoders…')
   const capture = await probeCapture(ffmpegPath, outputIdx)
