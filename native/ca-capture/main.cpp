@@ -135,6 +135,10 @@ class Encoder {
     RETURN_IF(MFSetAttributeSize(out.get(), MF_MT_FRAME_SIZE, width_, height_));
     RETURN_IF(MFSetAttributeRatio(out.get(), MF_MT_FRAME_RATE, opts_.fps, 1));
     RETURN_IF(MFSetAttributeRatio(out.get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1));
+    // Left to itself the encoder settles on constrained baseline, which has
+    // neither CABAC nor B-frames and spends roughly twice the bitrate for the
+    // same picture.
+    if (!opts_.hevc) RETURN_IF(out->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_High));
     RETURN_IF(writer_->AddStream(out.get(), &stream_));
 
     com_ptr<IMFMediaType> in;
@@ -181,6 +185,21 @@ class Encoder {
     return S_OK;
   }
 
+  /*
+   * The GOP setting is quietly ignored by this encoder, leaving one keyframe per
+   * segment: a clip could then only start on a segment boundary, two seconds
+   * from wherever it was asked for. Asking frame by frame is honoured.
+   */
+  void ForceKeyFrame() {
+    if (!codec_) return;
+    VARIANT variant;
+    VariantInit(&variant);
+    variant.vt = VT_UI4;
+    variant.ulVal = 1;
+    codec_->SetValue(&CODECAPI_AVEncVideoForceKeyFrame, &variant);
+    VariantClear(&variant);
+  }
+
   void EnableAudio() { withAudio_ = true; }
   bool HasAudio() const { return withAudio_; }
 
@@ -201,6 +220,7 @@ class Encoder {
     if (FAILED(writer_->GetServiceForStream(stream_, GUID_NULL, IID_PPV_ARGS(codec.put())))) {
       return;
     }
+    codec_ = codec;
     auto set = [&](const GUID& key, ULONG value) {
       VARIANT variant;
       VariantInit(&variant);
@@ -242,6 +262,7 @@ class Encoder {
     if (!writer_) return;
     writer_->Finalize();
     writer_ = nullptr;
+    codec_ = nullptr;
   }
 
  private:
@@ -251,6 +272,7 @@ class Encoder {
   int height_;
   bool withAudio_ = false;
   com_ptr<IMFSinkWriter> writer_;
+  com_ptr<ICodecAPI> codec_;
   DWORD stream_ = 0;
   DWORD audioStream_ = 0;
 };
@@ -585,6 +607,9 @@ int wmain(int argc, wchar_t** argv) {
     // away a zero-length sample.
     buffer->SetCurrentLength(static_cast<DWORD>(width) * static_cast<DWORD>(height) * 4);
 
+    // Twice a second, so a clip can begin within half a second of the moment
+    // it was asked for.
+    if (written % (std::max)(1, opts.fps / 2) == 0) encoder.ForceKeyFrame();
     sample->SetSampleTime(now - segmentEpoch);
     sample->SetSampleDuration(frameTicks);
     if (SUCCEEDED(encoder.Write(sample.get()))) {
