@@ -1,7 +1,7 @@
 import { app, dialog } from 'electron'
 import { spawn } from 'node:child_process'
 import { appendFileSync, createWriteStream, writeFileSync } from 'node:fs'
-import { rm, stat, writeFile } from 'node:fs/promises'
+import { readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -15,12 +15,12 @@ interface Release {
 }
 
 /*
- * The portable build runs from a copy it unpacks into %TEMP%, so process.execPath
- * points at that copy rather than at the file the user actually downloaded. The
- * launcher hands us the real path here, and that is the one an update replaces.
+ * Where the downloaded installer is staged. Named after the version so a run
+ * that was interrupted leaves something recognisable behind rather than a
+ * generic file nobody can place.
  */
-function portableExe(): string | null {
-  return process.env.PORTABLE_EXECUTABLE_FILE ?? null
+function stagedInstaller(version: string): string {
+  return join(app.getPath('temp'), `CaptureAssistant-${version}.exe`)
 }
 
 function isNewer(candidate: string, current: string): boolean {
@@ -68,47 +68,29 @@ async function download(release: Release, target: string): Promise<void> {
   }
 }
 
-/*
- * The portable launcher keeps its own exe open for as long as the app runs, so
- * it can be neither overwritten nor renamed from inside. Hand the swap to a
- * detached script that retries the move until we are gone.
- */
-async function scheduleSwap(exe: string, staged: string, relaunch: boolean): Promise<void> {
-  const script = join(app.getPath('temp'), 'ca-apply-update.cmd')
-  const lines = [
-    '@echo off',
-    'set /a tries=0',
-    ':retry',
-    `move /y "${staged}" "${exe}" >nul 2>&1`,
-    'if not errorlevel 1 goto done',
-    'set /a tries+=1',
-    'if %tries% geq 60 goto give_up',
-    'ping -n 2 127.0.0.1 >nul',
-    'goto retry',
-    ':done',
-    ...(relaunch ? [`start "" "${exe}"`] : []),
-    'goto cleanup',
-    ':give_up',
-    `del "${staged}" >nul 2>&1`,
-    ':cleanup',
-    'del "%~f0" >nul 2>&1'
-  ]
-
-  await writeFile(script, `${lines.join('\r\n')}\r\n`, 'utf8')
-  const swap = spawn('cmd.exe', ['/c', script], {
+async function applyUpdate(installer: string): Promise<void> {
+  // /S installs silently over the existing copy; without --force-run it would
+  // leave the app closed once it is done, which reads as the update having
+  // killed it.
+  const child = spawn(installer, ['/S', '--force-run'], {
     detached: true,
     stdio: 'ignore',
     windowsHide: true
   })
-  swap.on('error', () => undefined)
-  swap.unref()
+  child.on('error', () => undefined)
+  child.unref()
 }
 
 export async function discardOldBuild(): Promise<void> {
-  const exe = portableExe()
-  if (!exe) return
-  await rm(`${exe}.new`, { force: true }).catch(() => undefined)
-  await rm(`${exe}.old`, { force: true }).catch(() => undefined)
+  // Installers left behind by an interrupted update; the running one is already
+  // gone by the time this runs.
+  const dir = app.getPath('temp')
+  const names = await readdir(dir).catch(() => [] as string[])
+  for (const name of names) {
+    if (/^CaptureAssistant-[0-9.]+\.exe$/i.test(name)) {
+      await rm(join(dir, name), { force: true }).catch(() => undefined)
+    }
+  }
 }
 
 export interface UpdateHooks {
@@ -117,8 +99,7 @@ export interface UpdateHooks {
 }
 
 export async function checkForUpdate(hooks: UpdateHooks = {}): Promise<void> {
-  const exe = portableExe()
-  if (!exe || !app.isPackaged) return
+  if (!app.isPackaged) return
 
   const release = await latestRelease().catch(() => null)
   if (!release || !isNewer(release.version, app.getVersion())) return
@@ -136,13 +117,13 @@ export async function checkForUpdate(hooks: UpdateHooks = {}): Promise<void> {
   })
   if (response !== 0) return
 
-  const staged = `${exe}.new`
-  // The download is well over a hundred megabytes and the app looks frozen for
-  // the whole of it unless something says otherwise.
+  const staged = stagedInstaller(release.version)
+  // The download is a hundred megabytes and the app looks frozen for the whole
+  // of it unless something says otherwise.
   hooks.onDownloadStart?.()
   try {
     await download(release, staged)
-    await scheduleSwap(exe, staged, true)
+    await applyUpdate(staged)
   } catch (error) {
     hooks.onDownloadEnd?.()
     await rm(staged, { force: true }).catch(() => undefined)
@@ -164,12 +145,11 @@ export async function runUpdateSelfTest(): Promise<void> {
   const log = (message: string): void => appendFileSync(logPath, `${message}\n`)
   log(`log: ${logPath}`)
 
-  const exe = portableExe()
   log(`packaged: ${app.isPackaged}`)
-  log(`PORTABLE_EXECUTABLE_FILE: ${exe ?? 'NOT SET'}`)
+  log(`install path: ${process.execPath}`)
   log(`running version: ${app.getVersion()}`)
-  if (!exe) {
-    log('FAILED: no portable path, an update could never be applied')
+  if (!app.isPackaged) {
+    log('FAILED: not a packaged build, an update could never be applied')
     return
   }
 
@@ -184,15 +164,12 @@ export async function runUpdateSelfTest(): Promise<void> {
     return
   }
 
-  const before = await stat(exe)
-  log(`exe before: ${before.size} bytes`)
-
-  const staged = `${exe}.new`
+  const staged = stagedInstaller(release.version)
   try {
     await download(release, staged)
-    log(`downloaded to ${staged}`)
-    await scheduleSwap(exe, staged, false)
-    log('swap scheduled, quitting so it can run')
+    const written = await stat(staged)
+    log(`downloaded ${written.size} bytes to ${staged}`)
+    log('installer staged; not running it, this is a dry run')
   } catch (error) {
     log(`FAILED: ${String(error instanceof Error ? error.message : error)}`)
   }

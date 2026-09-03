@@ -37,14 +37,23 @@ asarUnpack:
 
 win:
   target:
-    - target: portable
+    - target: nsis
       arch: [x64]
   icon: build/icon.ico
 
-portable:
+# The portable target unpacks itself into %TEMP% and verifies the archive on
+# every launch, which measured 8 seconds before the app even started. What is
+# downloaded is still a single exe; it just installs once and then starts in a
+# fraction of a second.
+nsis:
   artifactName: CaptureAssistant.exe
-  unpackDirName: CaptureAssistant
-  requestExecutionLevel: user
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Capture Assistant
+  deleteAppDataOnUninstall: false
 
 publish:
   provider: github
