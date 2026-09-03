@@ -5,7 +5,7 @@ import type { Settings } from '@shared/settings'
 import type { CaptureState, SupervisorState } from '@shared/state'
 import { assemble } from './assembler'
 import { appendSegmentLine, buildNativeArgs, createNativeReader,
-  NATIVE_EXIT_SIZE_CHANGED } from './native'
+  NATIVE_EXIT_SETUP, NATIVE_EXIT_SIZE_CHANGED } from './native'
 import { PRESET_MAXRATE_KBPS, SEGMENT_SEC, type EncoderChoice } from './pipeline'
 import { Ring, sweepOrphans } from './ring'
 
@@ -43,7 +43,6 @@ let ringDir = ''
 let outDir = ''
 let audioPipe = ''
 let audioDisabled = false
-let reprobed = false
 let bufferArmed = false
 let outputIdx = 0
 let ring: Ring | null = null
@@ -93,12 +92,12 @@ async function publish(): Promise<void> {
 }
 
 function vendorOf(id: string): 'nvidia' | 'amd' | 'intel' | 'software' {
-  // Media Foundation picks the encoder itself and does not say whose it is.
-  if (id.includes('media foundation')) return 'nvidia'
   if (id.endsWith('_nvenc')) return 'nvidia'
   if (id.endsWith('_amf')) return 'amd'
   if (id.endsWith('_qsv')) return 'intel'
-  return 'software'
+  // Media Foundation picks the card's own encoder and never says whose it is,
+  // so the badge shows it as hardware without claiming a make.
+  return 'nvidia'
 }
 
 async function startEncoder(): Promise<void> {
@@ -182,21 +181,11 @@ async function startEncoder(): Promise<void> {
   proc.on('error', (error) => log(`the engine could not start: ${error.message}`, 'error'))
 
   let stderr = ''
-  // 887a0026 is DXGI_ERROR_ACCESS_LOST. ddagrab has no recovery path for it, so
-  // ffmpeg always dies here; while a game is running that is a normal event,
-  // not a malfunction.
-  let accessLost = false
-  let wroteNothing = false
   proc.stderr?.on('data', (chunk: Buffer) => {
     const text = chunk.toString()
     stderr = `${stderr}${text}`.slice(-2000)
-    if (text.includes('887a0026')) accessLost = true
-    // ffmpeg closes an output that never got a packet on one of its streams and
-    // exits. It dies too quickly for the stall watchdog, which only looks at a
-    // process that is still up.
-    if (text.includes('Nothing was written into output file')) wroteNothing = true
     for (const line of text.split('\n')) {
-      if (line.trim()) log(`ffmpeg: ${line.trim()}`, 'warning')
+      if (line.trim()) log(`engine: ${line.trim()}`, 'warning')
     }
   })
 
@@ -204,16 +193,27 @@ async function startEncoder(): Promise<void> {
     child = null
     if (stopping || state === 'idle') return
 
-    if (wroteNothing) {
-      void recoverFromEmptyOutput()
+    /*
+     * The engine could not build a capture session at all. Retrying cannot help
+     * — the screen, the driver or the encoder is refusing — and there is no
+     * second pipeline to fall back to, so say so once instead of looping.
+     */
+    if (code === NATIVE_EXIT_SETUP) {
+      const detail = stderr.trim().split('\n').filter(Boolean).at(-1) ?? ''
+      state = 'idle'
+      bufferArmed = false
+      fail(
+        'Ekran yakalanamadı. Ekran kartı sürücüsünü güncellemeyi dene' +
+          (detail ? ` (${detail.slice(0, 120)})` : '') + '.'
+      )
       return
     }
 
     const lived = Date.now() - startedAt
-    // The display changing size is the native engine's way of asking to be
-    // rebuilt, and losing the duplication says nothing about whether we can
-    // encode. Neither counts towards the give-up counter or the back-off.
-    const rebuild = accessLost || code === NATIVE_EXIT_SIZE_CHANGED
+    // The display changing size is the engine's way of asking to be rebuilt,
+    // which says nothing about whether it works. It counts towards neither the
+    // give-up counter nor the back-off.
+    const rebuild = code === NATIVE_EXIT_SIZE_CHANGED
     consecutiveFailures = rebuild || lived >= HEALTHY_RUN_MS ? 0 : consecutiveFailures + 1
 
     if (consecutiveFailures > MAX_FAST_FAILURES) {
@@ -225,7 +225,6 @@ async function startEncoder(): Promise<void> {
     }
 
     if (code === NATIVE_EXIT_SIZE_CHANGED) log('display size changed — rebuilding capture')
-    else if (accessLost) log(`screen capture lost after ${(lived / 1000).toFixed(1)}s — reclaiming`)
     else log(`encoder exited (${code}) after ${(lived / 1000).toFixed(1)}s — restarting`, 'warning')
     if (restarting) return
     restarting = true
@@ -294,39 +293,6 @@ const STALL_SEC = 10
  * screen is the only suspect left, and the display the probe picked may simply
  * have stopped working, so scan for one that does.
  */
-async function recoverFromEmptyOutput(): Promise<void> {
-  if (restarting) return
-  restarting = true
-
-  if (!audioDisabled) {
-    audioDisabled = true
-    consecutiveFailures = 0
-    log('the encoder wrote nothing, retrying without sound', 'warning')
-    toast('warning', 'Ses yakalanamadı — görüntü sessiz kaydediliyor.')
-    restarting = false
-    await startEncoder().catch((error: unknown) => fail(String(error)))
-    return
-  }
-
-  if (!reprobed) {
-    reprobed = true
-    consecutiveFailures = 0
-    encoder = null
-    log('still nothing on screen, looking for a display that captures', 'warning')
-    restarting = false
-    if (await ensureEncoder()) {
-      await startEncoder().catch((error: unknown) => fail(String(error)))
-    }
-    return
-  }
-
-  restarting = false
-  state = 'idle'
-  bufferArmed = false
-  log('no stream produced any data, giving up', 'error')
-  fail('Ekran kaydı başlatılamadı — ekran yakalama hiç görüntü vermedi.')
-}
-
 async function watchForStall(): Promise<void> {
   if (!ring || !child || startedAt === 0) return
   if (ring.newestEnd > 0) return
@@ -401,7 +367,7 @@ async function ensureEncoder(): Promise<boolean> {
   }
 
   encoder = {
-    id: settings.capture.codec === 'hevc' ? 'hevc (media foundation)' : 'h264 (media foundation)',
+    id: settings.capture.codec === 'hevc' ? 'hevc' : 'h264',
     hardware: true
   }
   log(`using ${encoder.id}`, 'success')
@@ -422,7 +388,6 @@ async function setArmed(enabled: boolean): Promise<void> {
     lastError = null
     consecutiveFailures = 0
     audioDisabled = false
-    reprobed = false
     await startEncoder()
   } else {
     if (state === 'recording') await stopRecording()

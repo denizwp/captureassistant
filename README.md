@@ -7,7 +7,7 @@
 Windows için geçmiş kayıt tamponu olan ekran kaydedici.
 
 <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white">
-<img src="https://img.shields.io/badge/NVENC%20%C2%B7%20AMF%20%C2%B7%20QSV-76B900">
+<img src="https://img.shields.io/badge/Graphics%20Capture%20%C2%B7%20Media%20Foundation-76B900">
 <img src="https://img.shields.io/badge/Electron-34-47848F?logo=electron&logoColor=white">
 <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white">
 <img src="https://img.shields.io/badge/lisans-MIT-2ea043">
@@ -28,14 +28,15 @@ almanın ek bir maliyeti olmaz.
 ## Kurulum
 
 [Releases](https://github.com/denizwp/captureassistant/releases) sayfasından
-`CaptureAssistant-<sürüm>.exe` dosyasını indir ve çalıştır. Hepsi bu.
+`CaptureAssistant.exe` dosyasını indir ve çalıştır. Hepsi bu.
 
-Installer yok — kayıt defterine yazmaz, Program Files'a kurulmaz, yönetici yetkisi
-istemez. Uygulama her açılışta kendini geçici bir klasöre açar, o yüzden ilk pencere
-birkaç saniye gecikir. Kaldırmak için exe'yi silmen yeterli.
+Tek tıkla, soru sormadan kuruluyor: yönetici yetkisi istemiyor, Program Files'a
+dokunmuyor, kendini kullanıcı klasörüne (`%LOCALAPPDATA%\Programs`) alıyor.
+Kaldırmak için Windows'un uygulama listesinden kaldırman yeterli; ayarların ve
+klipslerin yerinde kalır.
 
-FFmpeg pakete dahil. Dosya bu yüzden ~150 MB, karşılığında hiçbir şey indirmeden
-çalışıyor.
+İndirme ~77 MB ve içinde çalışması için gereken her şey var; kurulumdan sonra
+hiçbir şey indirmiyor.
 
 ## Kısayollar
 
@@ -71,45 +72,65 @@ canlı gösteriliyor; disk dolmaya başlarsa uygulama tamponu kendisi durduruyor
 ## Gereksinimler
 
 - Windows 10 sürüm 2004 veya üstü.
-- Donanım encoder'ı olan bir ekran kartı: NVENC (GTX 900+), AMF (RX 400+) veya
-  Intel Quick Sync. Uygulama açılışta hangisinin gerçekten çalıştığını deneyerek
-  seçiyor.
-- Tampon için disk alanı. 1080p60'ta 20 dakika en kötü durumda ~7.7 GB ring, artı
-  klip hazırlanırken geçici olarak bir o kadar daha.
-
-Donanım encoder'ı yoksa `libx264`'e düşüyor ama yazılım encode 1080p60'ta oyundan
-gözle görülür kare götürüyor; o durumda uygulama 1080p30'da sınırlıyor.
+- Donanım encoder'ı olan bir ekran kartı. Hangisinin kullanılacağına Media
+  Foundation karar veriyor, yani ekran kartının kendi encoder'ı ne ise o.
+- Tampon için disk alanı. 1080p60'ta bir dakika masaüstü görüntüsü ~60 MB tutuyor;
+  hareketli oyun görüntüsü bunun katı olabiliyor. Kaydedilecek süre slider'ının
+  altında o an gerçekten ölçülen değer yazıyor, tahmin değil.
 
 ## Nasıl çalışıyor
 
-Ekran `ddagrab` ile yakalanıp doğrudan donanım encoder'ına veriliyor; kareler
-sistem belleğine hiç inmiyor. Ses ayrı bir gizli sayfada toplanıp tek bir named
-pipe üzerinden aynı ffmpeg'e giriyor.
+Yakalama, kodlama ve birleştirme Windows'un kendi arayüzleriyle yazılmış iki
+küçük yardımcı programda yapılıyor; harici bir kodlayıcı yok.
 
-Çıktı 2 saniyelik, birbirinden bağımsız çözülebilen MPEG-TS parçaları olarak
-diske yazılıyor. Bir janitor eskiyenleri siliyor, yani tampon sabit boyutta
-kalıyor.
+Ekran Windows Graphics Capture ile yakalanıp doğrudan donanım encoder'ına
+veriliyor, kareler sistem belleğine hiç inmiyor. Her kare **yakalandığı** anla
+damgalanıyor: encoder geride kalırsa kare düşürülüyor, kayıt gerçek zamandan
+kopmuyor. Segmentler saatle dönüyor, yani ekran hiç değişmese bile tampon
+ilerlemeye devam ediyor.
 
-Klip istendiğinde yalnızca **ilk parça** yeniden encode ediliyor — çünkü istenen
-an neredeyse hiçbir zaman bir keyframe'e denk gelmiyor — gerisi bayt bayt
-kopyalanıyor. Kesim başta da sonda da tam oluyor ve işlem saniyeler sürüyor.
+Ses ayrı bir gizli sayfada toplanıp named pipe üzerinden aynı dosyaya yazılıyor,
+görüntüyle aynı zaman çizgisinde.
+
+Çıktı 2 saniyelik parçalar hâlinde diske yazılıyor ve bir janitor eskiyenleri
+siliyor, yani tampon sabit boyutta kalıyor.
+
+Klip istendiğinde hiçbir şey yeniden kodlanmıyor: kareler oldukları gibi
+kopyalanıyor, kesim istenen ana en yakın keyframe'den başlıyor. Kaydedilen klip
+istenen uzunlukla ölçülebilir şekilde örtüşüyor ve işlem saniyeler sürüyor.
+Kopyalama bittikten sonra dosya bir kez açılıp gerçekten çözülüyor mu diye
+bakılıyor — açılmayan bir klip kaydedilmiş sayılmıyor.
 
 ## Geliştirme
 
 ```sh
-npm install     # ffmpeg'i resources/ffmpeg içine indirir
+npm install
 npm run dev
-npm run dist    # release/CaptureAssistant-<sürüm>.exe
+npm run dist    # release/CaptureAssistant.exe
+```
+
+Yakalama ve birleştirme yardımcıları C++ ve ayrı derleniyor. Değiştirmedikçe
+gerek yok, `resources/` altındakiler repoda hazır duruyor:
+
+```sh
+native\ca-capture\build.cmd    # resources/ca-capture.exe
+native\ca-mux\build.cmd        # resources/ca-mux.exe
 ```
 
 Bu hattın büyük kısmı bozulduğunda sessizce bozuluyor, o yüzden ayrı teşhis
 girişleri var:
 
 ```sh
-npx electron . --audio-test       # gerçek ses yolundan 10 saniye kaydeder
-npx electron . --capture-test     # tamponu açıp bir klip üretir
+npx electron . --capture-test     # tamponu açıp klip üretir, süreleri ölçer
+npx electron . --update-test      # güncelleyiciyi kuru çalıştırır
 CA_DEBUG_HOTKEYS=1 npx electron . # hook'un gördüğü her tuşu loglar
 ```
+
+`--audio-test` de duruyor ama ses seviyelerini ffmpeg ile ölçüyor; çalıştırmadan
+önce `npm run fetch:ffmpeg` gerekiyor. Pakete girmiyor.
+
+Kabuğunda `ELECTRON_RUN_AS_NODE` ayarlıysa hepsi sessizce düz Node olarak açılır
+ve hiçbir pencere görünmez; `env -u ELECTRON_RUN_AS_NODE ...` ile başlat.
 
 Üçü de `%TEMP%` altına log yazıyor. Supervisor'ın yaşam döngüsü her zaman
 `%TEMP%\ca-supervisor.log`'a düşüyor.

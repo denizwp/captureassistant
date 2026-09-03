@@ -1,5 +1,5 @@
 import { app, session } from 'electron'
-import { join } from 'node:path'
+
 import { discardLegacyUserData, SettingsStore } from './store'
 import { beginQuit, createMainWindow } from './windows'
 import { broadcast, registerIpc } from './ipc'
@@ -342,4 +342,3 @@ if (!singleInstance) {
   })
 }
 
-export const RENDERER_DIST = join(__dirname, '../renderer')

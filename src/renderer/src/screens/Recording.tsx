@@ -44,7 +44,21 @@ export function RecordingScreen({
   const { replay, capture } = settings
   const maxrate =
     capture.bitrateKbps > 0 ? capture.bitrateKbps : PRESET_MAXRATE_KBPS[capture.preset]
-  const ringBytes = estimateRingBytes(replay.durationSec, maxrate)
+  /*
+   * The bitrate ceiling is what a bright, fast-moving screen would cost, and
+   * nothing else comes close to it — quoting it alone had the buffer looking
+   * several times more expensive than it is. Once the buffer has run there is a
+   * real number to show instead.
+   */
+  const measuredBytesPerSec = state.ring?.bytesPerSec ?? 0
+  const ringBytes =
+    measuredBytesPerSec > 0
+      ? measuredBytesPerSec * replay.durationSec
+      : estimateRingBytes(replay.durationSec, maxrate)
+  const sizeHint =
+    measuredBytesPerSec > 0
+      ? `Şu anki görüntüde diskte ~${formatBytes(ringBytes)} yer tutuyor.`
+      : `Diskte en fazla ~${formatBytes(ringBytes)} yer tutar.`
 
   return (
     <main className="content">
@@ -71,7 +85,7 @@ export function RecordingScreen({
 
             <Setting
               label="Kaydedilecek süre"
-              hint={`Diskte ~${formatBytes(ringBytes)} yer tutar. 30 saniyelik adımlarla ayarlanır.`}
+              hint={`${sizeHint} 30 saniyelik adımlarla ayarlanır.`}
               control={
                 <div className="slider-row" style={{ width: 220 }}>
                   <Slider

@@ -79,7 +79,9 @@ export function ClipsScreen() {
                 Klasörü aç
               </button>
             )}
-            <span className="badge badge--muted">{clips.length} klip</span>
+            <span className="badge badge--muted">
+              {clips.length} klip · {formatBytes(clips.reduce((sum, clip) => sum + clip.sizeBytes, 0))}
+            </span>
           </div>
         </div>
 
