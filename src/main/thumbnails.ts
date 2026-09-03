@@ -4,13 +4,15 @@ import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { ffmpegPath } from './supervisor'
+import { muxPath } from './supervisor'
 
 const run = promisify(execFile)
 
 function cacheDir(): string {
   return join(app.getPath('userData'), 'thumbs')
 }
+
+const durations = new Map<string, number>()
 
 export async function thumbnailFor(clipPath: string, mtimeMs: number): Promise<string | null> {
   const key = createHash('sha1').update(`${clipPath}:${mtimeMs}`).digest('hex').slice(0, 16)
@@ -21,22 +23,15 @@ export async function thumbnailFor(clipPath: string, mtimeMs: number): Promise<s
 
   await mkdir(cacheDir(), { recursive: true })
   try {
-    await run(
-      ffmpegPath(),
-      [
-        '-hide_banner',
-        '-v', 'error',
-
-        '-ss', '1',
-        '-i', clipPath,
-        '-frames:v', '1',
-        '-vf', 'scale=480:-2',
-        '-q:v', '4',
-        '-y',
-        out
-      ],
+    // The same call reports how long the clip runs, so the gallery gets both
+    // the picture and the length for the price of opening the file once.
+    const { stdout } = await run(
+      muxPath(),
+      ['thumb', '--in', clipPath, '--out', out, '--at', '1', '--width', '480'],
       { timeout: 15_000 }
     )
+    const seconds = /duration=([0-9.]+)/.exec(stdout)
+    if (seconds) durations.set(`${clipPath}:${mtimeMs}`, Number(seconds[1]))
   } catch {
     return null
   }
@@ -45,30 +40,22 @@ export async function thumbnailFor(clipPath: string, mtimeMs: number): Promise<s
   return written && written.size > 0 ? out : null
 }
 
-const durations = new Map<string, number>()
-
 export async function durationFor(clipPath: string, mtimeMs: number): Promise<number> {
   const key = `${clipPath}:${mtimeMs}`
   const cached = durations.get(key)
   if (cached !== undefined) return cached
 
-  /*
-   * Read from ffmpeg rather than ffprobe: asking for no output makes it print
-   * the header and stop, which takes about a tenth of a second, and it keeps a
-   * second 139MB binary out of the package.
-   */
+  // Reading the header alone, with no output file asked for, so this costs an
+  // open and a seek rather than a decode.
   try {
-    await run(ffmpegPath(), ['-hide_banner', '-i', clipPath], { timeout: 10_000 })
-    return 0
-  } catch (error) {
-    const stderr = (error as { stderr?: string }).stderr ?? ''
-    const match = /Duration:\s*(\d+):(\d\d):(\d\d(?:\.\d+)?)/.exec(stderr)
-    if (!match) return 0
-    const seconds =
-      Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
-    const value = Number.isFinite(seconds) ? seconds : 0
+    const { stdout } = await run(muxPath(), ['thumb', '--in', clipPath], { timeout: 10_000 })
+    const match = /duration=([0-9.]+)/.exec(stdout)
+    const value = match ? Number(match[1]) : 0
+    if (!Number.isFinite(value)) return 0
     durations.set(key, value)
     return value
+  } catch {
+    return 0
   }
 }
 

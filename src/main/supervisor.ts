@@ -33,6 +33,11 @@ export function capturePath(): string {
     : join(app.getAppPath(), 'resources', 'ca-capture.exe')
 }
 
+export function muxPath(): string {
+  const packaged = join(process.resourcesPath, 'ca-mux.exe')
+  return existsSync(packaged) ? packaged : join(app.getAppPath(), 'resources', 'ca-mux.exe')
+}
+
 export function ffmpegPath(): string {
   const packaged = join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe')
   return existsSync(packaged)
@@ -117,6 +122,7 @@ export class SupervisorHost extends EventEmitter {
       type: 'init',
       ffmpeg: ffmpegPath(),
       capture: capturePath(),
+      mux: muxPath(),
       ringDir: ringDirFor(settings),
       outDir: outDirFor(settings),
       audioPipe: AUDIO_PIPE,

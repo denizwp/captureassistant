@@ -15,6 +15,7 @@ interface InitMessage {
   type: 'init'
   ffmpeg: string
   capture: string
+  mux: string
   ringDir: string
   outDir: string
   audioPipe: string
@@ -41,6 +42,7 @@ const DISK_HEADROOM_BYTES = 5 * 1024 ** 3
 let settings: Settings | null = null
 let ffmpegPath = ''
 let capturePath = ''
+let muxPath = ''
 let ringDir = ''
 let outDir = ''
 let audioPipe = ''
@@ -623,6 +625,7 @@ async function buildClip(from: number, to: number, label: string): Promise<void>
       encoder,
       capture: settings.capture,
       ffmpeg: ffmpegPath,
+      mux: muxPath,
       workDir: join(ringDir, 'work')
     })
 
@@ -686,6 +689,7 @@ async function handle(message: Incoming): Promise<void> {
     case 'init':
       ffmpegPath = message.ffmpeg
       capturePath = message.capture
+      muxPath = message.mux
       ringDir = message.ringDir
       outDir = message.outDir
       audioPipe = message.audioPipe
