@@ -121,7 +121,8 @@ async function startEncoder(): Promise<void> {
     width: 0,
     height: 0,
     fps: settings.capture.fps,
-    codec: encoder.id
+    codec: encoder.id,
+    hasAudio: !audioDisabled
   })
 
   // The exact command, once per run: without it a report cannot be told apart

@@ -20,6 +20,14 @@ export interface Run {
   height: number
   fps: number
   codec: string
+
+  /*
+   * A run that fell back to silent capture writes segments with no audio
+   * stream. Concatenating those with segments that have one leaves the mp4
+   * muxer holding an audio stream it never got parameters for, and it refuses
+   * the file outright with "sample rate not set".
+   */
+  hasAudio: boolean
 }
 
 interface Pin {
@@ -304,7 +312,8 @@ export class Ring {
           r.width === run.width &&
           r.height === run.height &&
           r.fps === run.fps &&
-          r.codec === run.codec
+          r.codec === run.codec &&
+          r.hasAudio === run.hasAudio
       )
       .map((r) => r.id)
 
