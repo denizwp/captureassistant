@@ -1,9 +1,6 @@
 import { spawn } from 'node:child_process'
-import { createReadStream } from 'node:fs'
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
-import type { CaptureSettings } from '@shared/settings'
-import { buildAssembleArgs, buildHeadArgs, type EncoderChoice } from './pipeline'
 import type { Ring, Segment } from './ring'
 
 export interface AssembleRequest {
@@ -12,9 +9,6 @@ export interface AssembleRequest {
   to: number
   outDir: string
   name: string
-  encoder: EncoderChoice
-  capture: CaptureSettings
-  ffmpeg: string
   mux: string
   workDir: string
 }
@@ -60,56 +54,27 @@ export async function assemble(ring: Ring, request: AssembleRequest): Promise<As
   await mkdir(request.outDir, { recursive: true })
   await mkdir(request.workDir, { recursive: true })
 
-  const headPath = join(request.workDir, `${owner}.ts`)
   const listPath = join(request.workDir, `${owner}.txt`)
   const outPath = join(request.outDir, `${request.name}.mp4`)
 
   let keepList = false
   try {
     /*
-     * mp4 segments cannot be joined by pasting their bytes together the way
-     * mpegts could, so those go to the engine's own joiner. Copying pictures
-     * rather than re-encoding them means the clip can only begin on a keyframe,
-     * which the engine emits twice a second — close enough that nobody notices,
-     * and without the risk of a re-encoded head whose parameters do not match
-     * the segments behind it.
+     * Copying pictures rather than re-encoding them means the clip can only
+     * begin on a keyframe, which the engine emits twice a second — close enough
+     * that nobody notices, and without the risk of a re-encoded head whose
+     * parameters do not match the segments behind it.
      */
-    if (usable.some((segment: Segment) => segment.file.toLowerCase().endsWith('.mp4'))) {
-      const lines = usable.map((segment: Segment) => segment.file)
-      await writeFile(listPath, `${lines.join('\n')}\n`, 'utf8')
-      const said = await run(request.mux, [
-        'concat',
-        '--list', listPath,
-        '--out', outPath,
-        '--start', Math.max(0, from - first.start).toFixed(3),
-        '--duration', duration.toFixed(3)
-      ])
-      return { path: outPath, durationSec: duration, trimmedReason, note: said }
-    }
-
-    const offsetIntoFirst = from - first.start
-    let head: string | null = null
-    if (offsetIntoFirst > 0.001) {
-      await run(request.ffmpeg, [
-        ...buildHeadArgs({
-          segmentPath: first.file,
-          startTime: from,
-          encoder: request.encoder,
-          capture: request.capture,
-          outPath: headPath
-        })
-      ])
-      const written = await stat(headPath).catch(() => null)
-      if (written && written.size > 0) head = headPath
-    }
-
-    const tail = head ? usable.slice(1) : usable
-    await concatInto(request.ffmpeg, buildAssembleArgs({ durationSec: duration, outPath }), [
-      ...(head ? [head] : []),
-      ...tail.map((segment: Segment) => segment.file)
+    const lines = usable.map((segment: Segment) => segment.file)
+    await writeFile(listPath, `${lines.join('\n')}\n`, 'utf8')
+    const said = await run(request.mux, [
+      'concat',
+      '--list', listPath,
+      '--out', outPath,
+      '--start', Math.max(0, from - first.start).toFixed(3),
+      '--duration', duration.toFixed(3)
     ])
-
-    return { path: outPath, durationSec: duration, trimmedReason, note: null }
+    return { path: outPath, durationSec: duration, trimmedReason, note: said }
   } catch (error) {
     // The list names the exact segments a failed join was given, which is the
     // only way to reproduce it once the ring has moved on.
@@ -117,64 +82,8 @@ export async function assemble(ring: Ring, request: AssembleRequest): Promise<As
     throw error
   } finally {
     ring.unpin(owner)
-    await rm(headPath, { force: true })
     if (!keepList) await rm(listPath, { force: true })
   }
-}
-
-async function concatInto(ffmpeg: string, args: string[], files: string[]): Promise<void> {
-  const child = spawn(ffmpeg, args, { stdio: ['pipe', 'ignore', 'pipe'] })
-  let stderr = ''
-  child.stderr?.on('data', (chunk: Buffer) => {
-    stderr += chunk.toString()
-  })
-
-  const finished = new Promise<void>((resolve, reject) => {
-    child.on('error', reject)
-    child.on('close', (code) => {
-      if (code === 0) resolve()
-      else reject(new Error(`ffmpeg ${code}: ${stderr.trim().slice(0, 400)}`))
-    })
-  })
-
-  const stdin = child.stdin!
-  // -t stops ffmpeg as soon as it has the requested length, so the tail of the
-  // last segment regularly has nowhere to go. That closes the pipe under us and
-  // the EPIPE it raises is the normal end of the job, not a failure.
-  let closed = false
-  stdin.on('error', () => {
-    closed = true
-  })
-  stdin.on('close', () => {
-    closed = true
-  })
-
-  try {
-    outer: for (const file of files) {
-      for await (const chunk of createReadStream(file)) {
-        if (closed) break outer
-        if (!stdin.write(chunk as Buffer)) {
-          await new Promise<void>((resolve) => {
-            const done = (): void => {
-              stdin.off('drain', done)
-              stdin.off('close', done)
-              stdin.off('error', done)
-              resolve()
-            }
-            stdin.on('drain', done)
-            stdin.on('close', done)
-            stdin.on('error', done)
-          })
-        }
-      }
-    }
-    if (!closed) stdin.end()
-  } catch (error) {
-    child.kill()
-    throw error
-  }
-
-  await finished
 }
 
 function run(command: string, args: string[]): Promise<string> {

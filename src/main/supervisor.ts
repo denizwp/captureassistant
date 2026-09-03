@@ -38,13 +38,6 @@ export function muxPath(): string {
   return existsSync(packaged) ? packaged : join(app.getAppPath(), 'resources', 'ca-mux.exe')
 }
 
-export function ffmpegPath(): string {
-  const packaged = join(process.resourcesPath, 'ffmpeg', 'ffmpeg.exe')
-  return existsSync(packaged)
-    ? packaged
-    : join(app.getAppPath(), 'resources', 'ffmpeg', 'ffmpeg.exe')
-}
-
 function trace(message: string): void {
   try {
     appendFileSync(
@@ -67,7 +60,7 @@ export class SupervisorHost extends EventEmitter {
   }
 
   get available(): boolean {
-    return existsSync(ffmpegPath())
+    return existsSync(capturePath())
   }
 
   start(settings: Settings): void {
@@ -120,7 +113,6 @@ export class SupervisorHost extends EventEmitter {
 
     this.send({
       type: 'init',
-      ffmpeg: ffmpegPath(),
       capture: capturePath(),
       mux: muxPath(),
       ringDir: ringDirFor(settings),

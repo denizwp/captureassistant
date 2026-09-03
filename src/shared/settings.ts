@@ -2,8 +2,6 @@ export type CodecId = 'h264' | 'hevc' | 'av1'
 export type QualityPreset = 'low' | 'balanced' | 'high'
 export type IndicatorCorner = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
 
-export type CaptureMethod = 'native' | 'auto' | 'gdi'
-
 export interface CaptureSettings {
   monitorId: string | null
   fps: number
@@ -13,14 +11,6 @@ export interface CaptureSettings {
 
   preset: QualityPreset
 
-  /*
-   * 'native' is our own engine on Windows.Graphics.Capture: it stamps frames
-   * with when they were captured, drops one rather than falling behind the
-   * clock, and turns segments over on a timer so a still screen cannot stall
-   * the buffer. 'auto' is the older ffmpeg path on Desktop Duplication, and
-   * 'gdi' the BitBlt fallback that works everywhere at about ten times the CPU.
-   */
-  method: CaptureMethod
 }
 
 export interface ReplaySettings {
@@ -94,7 +84,6 @@ export const DEFAULT_SETTINGS: Settings = {
     bitrateKbps: 0,
     codec: 'h264',
     preset: 'balanced',
-    method: 'native'
   },
   replay: {
     enabled: false,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { DeepPartial } from '@shared/ipc'
-import type { CaptureMethod, CodecId, QualityPreset, Settings } from '@shared/settings'
+import type { CodecId, QualityPreset, Settings } from '@shared/settings'
 import type { SupervisorState } from '@shared/state'
 import { REPLAY_MAX_SEC, REPLAY_MIN_SEC, REPLAY_STEP_SEC } from '@shared/settings'
 import { api, type MonitorInfo } from '../api'
@@ -143,27 +143,6 @@ export function RecordingScreen({
 
             {advanced && (
               <>
-                <Setting
-                  label="Yakalama yöntemi"
-                  hint={
-                    capture.method === 'gdi'
-                      ? 'Ekran kartını atlar, her makinede çalışır, bir çekirdeğin çoğunu yer.'
-                      : capture.method === 'auto'
-                        ? 'Eski yol. Yeni motorda bir sorun çıkarsa buraya dönebilirsin.'
-                        : 'Önerilen. Kareyi yakalandığı anla damgalar, geride kalırsa kare düşürür.'
-                  }
-                  control={
-                    <Segmented<CaptureMethod>
-                      value={capture.method}
-                      onChange={(method) => patch({ capture: { method } })}
-                      options={[
-                        { value: 'native', label: 'Yeni motor' },
-                        { value: 'auto', label: 'Eski (ffmpeg)' },
-                        { value: 'gdi', label: 'Uyumluluk' }
-                      ]}
-                    />
-                  }
-                />
                 <Setting
                   label="Kare hızı"
                   control={

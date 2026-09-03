@@ -11,8 +11,7 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dist": "npm run build && node scripts/pack-exe.mjs",
-    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
-    "postinstall": "node scripts/fetch-ffmpeg.mjs"
+    "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs"
   },
   "dependencies": {
     "uiohook-napi": "^1.5.4"

@@ -4,16 +4,13 @@ import { join } from 'node:path'
 import type { Settings } from '@shared/settings'
 import type { CaptureState, SupervisorState } from '@shared/state'
 import { assemble } from './assembler'
-import { probeCapture, probeEncoder } from './encoders'
 import { appendSegmentLine, buildNativeArgs, createNativeReader,
   NATIVE_EXIT_SIZE_CHANGED } from './native'
-import { buildRingArgs, PRESET_MAXRATE_KBPS, SEGMENT_SEC, type EncoderChoice } from './pipeline'
-import { CaptureHealth } from './health'
+import { PRESET_MAXRATE_KBPS, SEGMENT_SEC, type EncoderChoice } from './pipeline'
 import { Ring, sweepOrphans } from './ring'
 
 interface InitMessage {
   type: 'init'
-  ffmpeg: string
   capture: string
   mux: string
   ringDir: string
@@ -40,7 +37,6 @@ type Incoming =
 const DISK_HEADROOM_BYTES = 5 * 1024 ** 3
 
 let settings: Settings | null = null
-let ffmpegPath = ''
 let capturePath = ''
 let muxPath = ''
 let ringDir = ''
@@ -50,7 +46,6 @@ let audioDisabled = false
 let reprobed = false
 let bufferArmed = false
 let outputIdx = 0
-let adapterIdx = 0
 let ring: Ring | null = null
 let encoder: EncoderChoice | null = null
 
@@ -59,8 +54,6 @@ let restarting = false
 let stopping = false
 let consecutiveFailures = 0
 let startedAt = 0
-let health: CaptureHealth | null = null
-let healthLoggedAt = 0
 
 const HEALTHY_RUN_MS = 5000
 const MAX_FAST_FAILURES = 4
@@ -113,47 +106,32 @@ async function startEncoder(): Promise<void> {
 
   await mkdir(ringDir, { recursive: true })
 
-  const native = settings.capture.method === 'native' && !!capturePath
-  const args = native
-    ? buildNativeArgs({
-        capture: settings.capture,
-        outputIdx,
-        ringDir,
-        startNumber: ring.nextSegmentNumber,
-        drawMouse: true,
-        audioPipe: audioDisabled ? null : audioPipe
-      })
-    : buildRingArgs({
-        capture: settings.capture,
-        encoder,
-        outputIdx,
-        adapterIdx,
-        ringDir,
-        startNumber: ring.nextSegmentNumber,
-        drawMouse: true,
-
-        audioPipe: audioDisabled ? null : audioPipe
-      })
+  const args = buildNativeArgs({
+    capture: settings.capture,
+    outputIdx,
+    ringDir,
+    startNumber: ring.nextSegmentNumber,
+    drawMouse: true,
+    audioPipe: audioDisabled ? null : audioPipe
+  })
 
   await ring.beginRun({
     width: 0,
     height: 0,
     fps: settings.capture.fps,
-    codec: native ? 'native' : encoder.id,
+    codec: 'native',
     hasAudio: !audioDisabled
   })
 
   // The exact command, once per run: without it a report cannot be told apart
   // from one where the arguments themselves were wrong.
-  const binary = native ? capturePath : ffmpegPath
-  log(`${native ? 'ca-capture' : 'ffmpeg'} ${args.join(' ')}`)
+  log(`ca-capture ${args.join(' ')}`)
 
-  const proc = spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+  const proc = spawn(capturePath, args, { stdio: ['ignore', 'pipe', 'pipe'] })
   child = proc
   startedAt = Date.now()
   /*
-   * The ffmpeg path starts producing the moment it is spawned, but the native
-   * engine spends a second or so building its capture session first and counts
+   * The engine spends a second or so building its capture session and counts
    * its own timeline from the end of that. Anchoring the ring at spawn would
    * leave the clock running ahead of the segments by exactly that setup time,
    * and every cut point taken from it lands past what was written.
@@ -163,83 +141,45 @@ async function startEncoder(): Promise<void> {
     const shift = ring.markEncoderStart()
     if (recordStart !== null) recordStart += shift
   }
-  if (!native) anchor()
-  log(`encoder started (${native ? 'ca-capture' : encoder.id})`, 'success')
+  log('encoder started (ca-capture)', 'success')
 
-  if (native) {
-    /*
-     * The engine names each finished segment on stdout. Writing those into the
-     * same index.csv ffmpeg used keeps the ring, the janitor and every cut point
-     * working without knowing which engine produced the files.
-     */
-    let lastStats = 0
-    const read = createNativeReader({
-      onReady: (line) => {
-        anchor()
-        log(line)
-      },
-      onSegment: (line) => {
-        void appendSegmentLine(ringDir, line).catch((error: unknown) =>
-          log(`could not record segment: ${String(error)}`, 'error')
-        )
-      },
-      onStats: (stats) => {
-        const now = Date.now()
-        if (now - lastStats < 30_000) return
-        lastStats = now
-        const target = settings?.capture.fps ?? 60
-        const rate = stats.wall > 0 ? stats.frames / stats.wall : 0
-        log(
-          `capture ${rate.toFixed(1)}/${target} fps, ` +
-            `${stats.produced.toFixed(2)}s of ${stats.wall.toFixed(2)}s wall` +
-            ` (${stats.dropped} dropped, ${stats.rejected} rejected)`
-        )
-      }
-    })
-    proc.stdout?.on('data', (chunk: Buffer) => read(chunk.toString()))
-  }
-
-  health = new CaptureHealth()
-  healthLoggedAt = 0
-  const monitor = health
-  // ffmpeg's progress stream only exists on the ffmpeg path; the native engine
-  // reports its own numbers above.
-  if (!native) proc.stdout?.on('data', (chunk: Buffer) => {
-    if (health !== monitor) return
-    monitor.feed(chunk.toString())
-    const fps = monitor.effectiveFps
-    if (fps === null) return
-    const target = settings?.capture.fps ?? 60
-
-    // A timeline in the log is the only way to tell afterwards whether a clip
-    // came out choppy because the screen was never sampled.
-    const kbps = ((ring?.writeRateBytesPerSec ?? 0) * 8) / 1000
-    const now = Date.now()
-    if (now - healthLoggedAt > 30_000) {
-      healthLoggedAt = now
-      const counters = monitor.counters
+  /*
+   * The engine names each finished segment on stdout, and those lines go into
+   * index.csv. The ring, the janitor and every cut point read that file and
+   * never need to know what produced it.
+   */
+  let lastStats = 0
+  const read = createNativeReader({
+    onReady: (line) => {
+      anchor()
+      log(line)
+    },
+    onSegment: (line) => {
+      void appendSegmentLine(ringDir, line).catch((error: unknown) =>
+        log(`could not record segment: ${String(error)}`, 'error')
+      )
+    },
+    onStats: (stats) => {
+      const now = Date.now()
+      if (now - lastStats < 30_000) return
+      lastStats = now
+      const target = settings?.capture.fps ?? 60
+      const rate = stats.wall > 0 ? stats.frames / stats.wall : 0
+      // A timeline in the log is the only way to tell afterwards whether a clip
+      // came out choppy because the screen was never sampled.
       log(
-        `capture ${fps.toFixed(1)}/${target} fps, ${kbps.toFixed(0)} kbps, ` +
-          `${(monitor.speed ?? 0).toFixed(2)}x real time` +
-          (counters ? ` (${counters.frames} frames, ${counters.dups} padded)` : '')
+        `capture ${rate.toFixed(1)}/${target} fps, ` +
+          `${stats.produced.toFixed(2)}s of ${stats.wall.toFixed(2)}s wall` +
+          ` (${stats.dropped} dropped, ${stats.rejected} rejected)`
       )
     }
-
-    /*
-     * No warning is raised from these numbers. Desktop Duplication only hands
-     * over a frame when the screen changes, so a low rate is the correct
-     * reading for anyone looking at a still desktop, and bitrate does not
-     * separate the two either — a desktop with a window open still encodes to
-     * megabits. Acting on it would restart the encoder, and a gap in the buffer
-     * is a real cost paid for a guess. The numbers go to the log so a report
-     * can be read against what the person says was on screen.
-     */
   })
+  proc.stdout?.on('data', (chunk: Buffer) => read(chunk.toString()))
 
   // A spawn that never gets off the ground emits 'error', and an 'error' with
   // no listener is thrown: the whole supervisor would go down over a missing or
-  // blocked ffmpeg. 'close' still follows, so the restart path handles it.
-  proc.on('error', (error) => log(`ffmpeg could not start: ${error.message}`, 'error'))
+  // blocked engine. 'close' still follows, so the restart path handles it.
+  proc.on('error', (error) => log(`the engine could not start: ${error.message}`, 'error'))
 
   let stderr = ''
   // 887a0026 is DXGI_ERROR_ACCESS_LOST. ddagrab has no recovery path for it, so
@@ -455,39 +395,16 @@ async function ensureEncoder(): Promise<boolean> {
    * machine whose duplication is broken away at the door — which is the exact
    * machine this engine exists for.
    */
-  if (settings.capture.method === 'native' && capturePath) {
-    encoder = {
-      id: settings.capture.codec === 'hevc' ? 'hevc (media foundation)' : 'h264 (media foundation)',
-      hardware: true
-    }
-    log(`using ${encoder.id}`, 'success')
-    return true
-  }
-
-  log('probing encoders…')
-  const capture = await probeCapture(ffmpegPath, outputIdx)
-  if (capture.error) {
-    log(`capture probe failed: ${capture.error}`, 'error')
-    fail(
-      'Ekran yakalanamadı. Ekran kaydı bu makinede Desktop Duplication ile ' +
-        'açılamıyor — dizüstünde hibrit ekran kartı veya sürücü sorunu olabilir.'
-    )
+  if (!capturePath) {
+    fail('Yakalama motoru bulunamadı. Uygulamayı yeniden kurmak gerekiyor.')
     return false
   }
-  adapterIdx = capture.adapterIdx
-  if (capture.outputIdx !== outputIdx) {
-    log(`display ${outputIdx} gave no frames, using display ${capture.outputIdx}`, 'warning')
-    outputIdx = capture.outputIdx
-  }
-  if (adapterIdx !== 0) log(`capturing through adapter ${adapterIdx}`, 'warning')
 
-  const result = await probeEncoder(ffmpegPath, settings.capture.codec)
-  for (const item of result.rejected) log(`${item.id}: ${item.reason}`, 'warning')
-  encoder = result.encoder
-  log(`using ${encoder.id}`, 'success')
-  if (!encoder.hardware) {
-    toast('warning', 'Donanım encoder bulunamadı — yazılım encode oyunu yavaşlatır.')
+  encoder = {
+    id: settings.capture.codec === 'hevc' ? 'hevc (media foundation)' : 'h264 (media foundation)',
+    hardware: true
   }
+  log(`using ${encoder.id}`, 'success')
   return true
 }
 
@@ -622,9 +539,6 @@ async function buildClip(from: number, to: number, label: string): Promise<void>
       to,
       outDir,
       name: fileName(label),
-      encoder,
-      capture: settings.capture,
-      ffmpeg: ffmpegPath,
       mux: muxPath,
       workDir: join(ringDir, 'work')
     })
@@ -688,7 +602,6 @@ port?.on('message', (event) => {
 async function handle(message: Incoming): Promise<void> {
   switch (message.type) {
     case 'init':
-      ffmpegPath = message.ffmpeg
       capturePath = message.capture
       muxPath = message.mux
       ringDir = message.ringDir
@@ -734,7 +647,6 @@ async function handle(message: Incoming): Promise<void> {
 
       if (message.outputIdx !== undefined && message.outputIdx !== outputIdx) {
         outputIdx = message.outputIdx
-        adapterIdx = 0
         encoder = null
         if (state !== 'idle') {
           log(`display changed, restarting encoder on output ${outputIdx}`, 'warning')

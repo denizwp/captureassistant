@@ -68,8 +68,7 @@ async function main() {
     'Capture Assistant.exe',
     'resources/app.asar.unpacked/out/main/supervisor.js',
     'resources/ca-capture.exe',
-    'resources/ca-mux.exe',
-    'resources/ffmpeg/ffmpeg.exe'
+    'resources/ca-mux.exe'
   ]) {
     if (!(await stat(join(unpacked, rel)).catch(() => null))) {
       throw new Error(`missing from the payload: ${rel}`)
