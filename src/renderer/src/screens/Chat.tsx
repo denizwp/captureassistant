@@ -324,11 +324,11 @@ export function ChatScreen({
               }
             />
             <Setting
-              label="Diske arşivle"
+              label="Otomatik arşivle"
               hint="Kapalıyken sohbet yalnızca bu pencerede durur, diske hiçbir dosya yazılmaz. İstediğini elle TXT olarak alırsın."
               control={
                 <Switch
-                  label="Diske arşivle"
+                  label="Otomatik arşivle"
                   checked={chat.keepArchive}
                   disabled={!chat.enabled}
                   onChange={(keepArchive) => patch({ chat: { keepArchive } })}
