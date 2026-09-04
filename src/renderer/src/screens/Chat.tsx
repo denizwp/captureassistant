@@ -129,10 +129,10 @@ export function ChatScreen({
             <div className="empty">
               <p className="empty__title">Sohbet takibi kapalı</p>
               <p className="empty__hint">
-                Açtığında FiveM ekranda zaten gösterdiği sohbeti okur ve her sunucu için günlük
-                bir metin dosyasına yazar. Oyuna hiçbir şey enjekte edilmez, tuş gönderilmez —
-                yalnızca okunur. Sunucuların dışarıdan sohbet kaydı konusundaki kuralları farklı
-                olabilir, açmadan önce kendi sunucunun kurallarına bakman gerekir.
+                Oyundaki sohbet arka planda birikir; sunucudaki renkleriyle burada akar, her gün
+                ve her sunucu için ayrı bir dosyaya düşer. Rol, OOC ve özel mesajları ayırabilir,
+                geçmişte arama yapabilir, istediğin kısmı TXT veya renkli HTML olarak dışarı
+                alabilirsin. Klip kaydettiğinde o anın konuşması da klibin yanına yazılır.
               </p>
               <button
                 type="button"

@@ -25,6 +25,27 @@ Normal kayıt için: `Alt+F9` ile başlat, tekrar basıp bitir.
 Tampon ve manuel kayıt aynı encoder üzerinden çalışır. Yani tampon açıkken kayıt
 almanın ek bir maliyeti olmaz.
 
+## Sohbet
+
+FiveM oynuyorsan oyundaki sohbet arka planda birikir ve her sunucu için günlük bir
+metin dosyasına yazılır. Satırlar sunucudaki renkleriyle görünür; rol, OOC, özel
+mesaj ve sunucu bildirimleri ayrı ayrı süzülebilir, geçmişte arama yapılabilir.
+
+Filtreler yalnızca ekranı etkiler — diskteki dosya olduğu gibi kalır. Gördüğünü
+düz TXT ya da renkleri gömülü, tek parça HTML olarak dışarı alabilirsin.
+
+Klip kaydettiğinde o aralıkta geçen konuşma da klibin yanına aynı adla yazılır,
+böylece görüntü ve sohbet birlikte durur.
+
+Varsayılan olarak kapalıdır, `Sohbet` sekmesinden açılır.
+
+```text
+Capture Assistant Sohbet
+└── 2026
+    └── 09 - Eylül
+        └── Sohbet [Sunucu Adı] [04-Eylül-2026].txt
+```
+
 ## Kurulum
 
 [Releases](https://github.com/denizwp/captureassistant/releases) sayfasından
@@ -122,6 +143,7 @@ girişleri var:
 
 ```sh
 npx electron . --capture-test     # tamponu açıp klip üretir, süreleri ölçer
+npx electron . --chat-test        # sahte bir oyun ucuna karşı sohbet hattını sınar
 npx electron . --update-test      # güncelleyiciyi kuru çalıştırır
 CA_DEBUG_HOTKEYS=1 npx electron . # hook'un gördüğü her tuşu loglar
 ```

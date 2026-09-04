@@ -4,7 +4,7 @@ import { discardLegacyUserData, SettingsStore } from './store'
 import { beginQuit, createMainWindow } from './windows'
 import { broadcast, registerIpc } from './ipc'
 import { ChatCapture } from './chat'
-import { chatArchiveDir, registerChatIpc } from './chat/ipc'
+import { chatArchiveDir, registerChatIpc, writeChatBeside } from './chat/ipc'
 import { AudioEngine } from './audio'
 import { ringDirFor, SupervisorHost } from './supervisor'
 import { TrayController } from './tray'
@@ -301,6 +301,20 @@ if (!singleInstance) {
       else void chat.stop()
     }
     syncChat()
+
+    /*
+     * A clip on its own does not say what was going on around it. When chat is
+     * being followed, the lines covering the same stretch of time are written
+     * beside it under the same name, so the two travel together.
+     */
+    supervisor.on('clip', (clip: { path: string; durationSec: number }) => {
+      if (!store.get().chat.enabled) return
+      void writeChatBeside(chat.getLines(), clip.path, clip.durationSec)
+        .then((written) => {
+          if (written) logEntry('info', `chat written beside clip: ${written}`)
+        })
+        .catch((error: unknown) => logEntry('warning', `chat sidecar failed: ${String(error)}`))
+    })
 
     registerIpc(store, audio, supervisor, {
       onSettingsChanged: () => {

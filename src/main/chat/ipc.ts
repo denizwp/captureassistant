@@ -39,6 +39,29 @@ function matches(line: ChatLine, kinds: ChatKind[], query: string): boolean {
   return line.text.toLocaleLowerCase('tr').includes(query.toLocaleLowerCase('tr'))
 }
 
+/*
+ * The chat covering a clip, written next to it under the same name. The window
+ * is taken from the clip's own length, so it lines up with what was recorded
+ * rather than with when the file happened to finish being written.
+ */
+export async function writeChatBeside(
+  lines: ChatLine[],
+  clipPath: string,
+  durationSec: number
+): Promise<string | null> {
+  const until = Date.now()
+  const since = until - durationSec * 1000
+  const covered = lines.filter((line) => line.at >= since && line.at <= until)
+  if (covered.length === 0) return null
+
+  const target = `${clipPath.slice(0, -4)}.txt`
+  await exportText(
+    target,
+    covered.map((line) => ({ text: line.text, runs: line.runs, kind: line.kind }))
+  )
+  return target
+}
+
 export function registerChatIpc(store: SettingsStore, chat: ChatCapture): void {
   ipcMain.handle('chat:status', () => chat.getStatus())
   ipcMain.handle('chat:lines', () => chat.getLines())
