@@ -80,6 +80,8 @@ export interface ChatSettings {
    */
   enabled: boolean
   archiveDir: string | null
+  /* Whether saving a clip also drops the matching chat beside it. */
+  saveWithClips: boolean
   showTimestamps: boolean
   /* Whether the live view paints lines in the colours the server used. */
   useServerColors: boolean
@@ -123,6 +125,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chat: {
     enabled: false,
     archiveDir: null,
+    saveWithClips: true,
     showTimestamps: true,
     useServerColors: true
   },

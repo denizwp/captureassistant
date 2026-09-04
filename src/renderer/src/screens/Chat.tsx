@@ -288,6 +288,18 @@ export function ChatScreen({
               }
             />
             <Setting
+              label="Klibin yanına sohbeti de yaz"
+              hint="Alt+F10 ile klip aldığında aynı dakikaların sohbeti klibin yanına metin dosyası olarak düşer. Videoya bir şey eklenmez."
+              control={
+                <Switch
+                  label="Klibin yanına sohbeti de yaz"
+                  checked={chat.saveWithClips}
+                  disabled={!chat.enabled}
+                  onChange={(saveWithClips) => patch({ chat: { saveWithClips } })}
+                />
+              }
+            />
+            <Setting
               label="Saat göster"
               control={
                 <Switch

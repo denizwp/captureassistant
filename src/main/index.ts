@@ -309,7 +309,8 @@ if (!singleInstance) {
      * beside it under the same name, so the two travel together.
      */
     supervisor.on('clip', (clip: { path: string; durationSec: number; endedAt?: number }) => {
-      if (!store.get().chat.enabled) return
+      const config = store.get().chat
+      if (!config.enabled || !config.saveWithClips) return
       void writeChatBeside(chat.getLines(), clip.path, clip.durationSec, clip.endedAt)
         .then((written) => {
           if (written) logEntry('info', `chat written beside clip: ${written}`)

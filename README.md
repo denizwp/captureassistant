@@ -4,7 +4,8 @@
 
 # Capture Assistant
 
-Windows için geçmiş kayıt tamponu olan ekran kaydedici.
+Windows için geçmiş kayıt tamponu olan ekran kaydedici — FiveM oynuyorsan
+oyundaki sohbeti de kaydeder.
 
 <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?logo=windows&logoColor=white">
 <img src="https://img.shields.io/badge/Graphics%20Capture%20%C2%B7%20Media%20Foundation-76B900">
@@ -25,17 +26,28 @@ Normal kayıt için: `Alt+F9` ile başlat, tekrar basıp bitir.
 Tampon ve manuel kayıt aynı encoder üzerinden çalışır. Yani tampon açıkken kayıt
 almanın ek bir maliyeti olmaz.
 
+FiveM oynuyorsan oyundaki sohbet de arka planda birikir, ve `Alt+F10` ile klip
+aldığında **aynı dakikaların sohbeti** klibin yanına metin dosyası olarak düşer.
+
 ## Sohbet
 
-FiveM oynuyorsan oyundaki sohbet arka planda birikir ve her sunucu için günlük bir
-metin dosyasına yazılır. Satırlar sunucudaki renkleriyle görünür; rol, OOC, özel
-mesaj ve sunucu bildirimleri ayrı ayrı süzülebilir, geçmişte arama yapılabilir.
+Oyundaki sohbet, her sunucu için ayrı bir günlük metin dosyasına yazılır.
+Uygulamada satırlar sunucudaki renkleriyle akar; rol, OOC, özel mesaj ve sunucu
+bildirimleri ayrı ayrı süzülebilir, geçmişte arama yapılabilir.
 
 Filtreler yalnızca ekranı etkiler — diskteki dosya olduğu gibi kalır. Gördüğünü
 düz TXT ya da renkleri gömülü, tek parça HTML olarak dışarı alabilirsin.
 
-Klip kaydettiğinde o aralıkta geçen konuşma da klibin yanına aynı adla yazılır,
-böylece görüntü ve sohbet birlikte durur.
+Klip kaydettiğinde o aralıkta geçen konuşma klibin yanına aynı adla yazılır.
+Videoya hiçbir şey eklenmez; yan yana iki dosya olur:
+
+```text
+Klip 2026.09.04 - 21.30.mp4
+Klip 2026.09.04 - 21.30.txt
+```
+
+Sohbet, oyunun arayüzünün zaten ekrana çizdiği yerden okunur. Oyuna hiçbir şey
+enjekte edilmez, bellek okunmaz, tuş gönderilmez.
 
 Varsayılan olarak kapalıdır, `Sohbet` sekmesinden açılır.
 
