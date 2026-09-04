@@ -256,20 +256,26 @@ export function ChatScreen({
               <Section
                 title="Arşiv"
                 aside={
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    onClick={() => void api.revealChatFolder()}
-                  >
-                    <i className="ph ph-folder-open" />
-                    Klasörü aç
-                  </button>
+                  <div className="chatbar__actions">
+                    {archive.length > 0 && (
+                      <span className="setting__hint">{archive.length} gün</span>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      onClick={() => void api.revealChatFolder()}
+                    >
+                      <i className="ph ph-folder-open" />
+                      Klasörü aç
+                    </button>
+                  </div>
                 }
               >
                 {archive.length === 0 ? (
                   <p className="setting__hint">Henüz kaydedilmiş gün yok.</p>
                 ) : (
-                  archive.slice(0, 20).map((entry) => (
+                  <div className="archive">
+                  {archive.map((entry) => (
                     <div className="setting" key={entry.path}>
                       <div className="setting__text">
                         <span className="label">{entry.server}</span>
@@ -296,7 +302,8 @@ export function ChatScreen({
                         </button>
                       </div>
                     </div>
-                  ))
+                  ))}
+                  </div>
                 )}
               </Section>
             </>

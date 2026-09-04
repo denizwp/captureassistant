@@ -28,6 +28,8 @@ export interface ChatLine {
   at: number
   /* The line without the leading [HH:MM:SS], which is shown separately. */
   text: string
+  /* Exactly as it was captured, clock and all — what an export writes out. */
+  raw: string
   kind: ChatKind
   runs: ChatColorRun[]
 }

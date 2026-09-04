@@ -604,3 +604,15 @@
 .chatline__time { color: var(--text-subtle); flex-shrink: 0; opacity: .7; }
 .chatline__text { white-space: pre-wrap; word-break: break-word; min-width: 0; }
 .chatline--system .chatline__text { color: var(--text-subtle); font-style: italic; }
+
+/*
+ * The archive grows by a file a day per server, and left to itself it pushed
+ * the settings under it off the bottom of the screen. It scrolls in place
+ * instead, so the page below stays where it is.
+ */
+.archive {
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: var(--space-1);
+}
+.archive .setting:first-child { padding-top: 0; }

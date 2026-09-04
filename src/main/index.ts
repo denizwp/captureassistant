@@ -312,7 +312,13 @@ if (!singleInstance) {
     supervisor.on('clip', (clip: { path: string; durationSec: number; endedAt?: number }) => {
       const config = store.get().chat
       if (!config.enabled || !config.saveWithClips) return
-      void writeChatBeside(chat.getLines(), clip.path, clip.durationSec, clip.endedAt)
+      void writeChatBeside(
+        chat.getLines(),
+        clip.path,
+        clip.durationSec,
+        clip.endedAt,
+        config.showTimestamps
+      )
         .then((written) => {
           if (written) logEntry('info', `chat written beside clip: ${written}`)
         })

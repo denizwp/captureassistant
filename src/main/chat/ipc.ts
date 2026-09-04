@@ -5,7 +5,7 @@ import type { ArchiveEntry, ChatKind, ChatLine } from '@shared/chat'
 import type { SettingsStore } from '../store'
 import type { ChatCapture } from './index'
 import { listArchive, readArchive } from './archive'
-import { classify, splitTimestamp } from './classify'
+import { classify, resolveMoment, splitTimestamp } from './classify'
 import { exportHtml, exportText, type ExportLine } from './export'
 
 export function chatArchiveDir(store: SettingsStore): string {
@@ -26,11 +26,25 @@ function reviveLine(text: string, runs: ChatLine['runs'], index: number): ChatLi
 
   return {
     id: `a${index}`,
-    at: 0,
+    // Only the time of day is ever shown from this, so the date it lands on
+    // does not matter — the file name already says which day it was.
+    at: marker ? 0 : resolveMoment(Date.now(), split.stamp),
     text: marker ? text : split.body,
+    raw: text,
     kind: marker ? 'system' : classify(split.body),
     runs: marker ? [] : shifted
   }
+}
+
+/*
+ * Colour runs are always kept against the line without its clock, since that is
+ * what is drawn on screen. Putting the clock back makes the text longer, so
+ * every run has to slide forward by exactly what was added.
+ */
+function runsWithClock(line: ChatLine): ChatLine['runs'] {
+  const added = line.raw.length - line.text.length
+  if (added <= 0) return line.runs
+  return line.runs.map((run) => ({ ...run, start: run.start + added }))
 }
 
 function matches(line: ChatLine, kinds: ChatKind[], query: string): boolean {
@@ -48,7 +62,8 @@ export async function writeChatBeside(
   lines: ChatLine[],
   clipPath: string,
   durationSec: number,
-  endedAt?: number
+  endedAt?: number,
+  withClock = true
 ): Promise<string | null> {
   const until = endedAt ?? Date.now()
   const since = until - durationSec * 1000
@@ -58,7 +73,11 @@ export async function writeChatBeside(
   const target = `${clipPath.slice(0, -4)}.txt`
   await exportText(
     target,
-    covered.map((line) => ({ text: line.text, runs: line.runs, kind: line.kind }))
+    covered.map((line) => ({
+      text: withClock ? line.raw : line.text,
+      runs: withClock ? runsWithClock(line) : line.runs,
+      kind: line.kind
+    }))
   )
   return target
 }
@@ -101,9 +120,16 @@ export function registerChatIpc(store: SettingsStore, chat: ChatCapture): void {
        * What is exported is what is on screen: the same filters, the same
        * search. The archive on disk is never rewritten by this.
        */
+      const withClock = store.get().chat.showTimestamps
       const kept: ExportLine[] = lines
         .filter((line) => matches(line, payload.kinds, payload.query))
-        .map((line) => ({ text: line.text, runs: line.runs, kind: line.kind }))
+        .map((line) => ({
+          // The clock is part of the line on disk; whether it comes out again is
+          // the same choice that governs whether it is on screen.
+          text: withClock ? line.raw : line.text,
+          runs: withClock ? runsWithClock(line) : line.runs,
+          kind: line.kind
+        }))
 
       if (kept.length === 0) return null
 

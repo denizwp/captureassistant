@@ -186,6 +186,7 @@ export class ChatCapture extends EventEmitter {
       id: `l${this.nextId++}`,
       at: resolveMoment(seenAt.getTime(), split.stamp),
       text: split.body,
+      raw: row.t,
       kind: classify(split.body),
       runs
     }
