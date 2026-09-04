@@ -3,7 +3,6 @@ import type { DeepPartial } from '@shared/ipc'
 import type { HotkeySettings, Settings } from '@shared/settings'
 import { DEFAULT_SETTINGS } from '@shared/settings'
 import { Keys, Section } from '../components/controls'
-import { characterArt } from '../art'
 
 const BINDINGS: { key: keyof HotkeySettings; label: string; hint?: string }[] = [
   { key: 'saveReplay', label: 'Geçmiş kaydı kaydet' },
@@ -70,7 +69,7 @@ function toAccelerator(event: KeyboardEvent): string | null {
   return parts.join('+')
 }
 
-export function HotkeysScreen({
+export function HotkeySections({
   settings,
   patch
 }: {
@@ -114,30 +113,28 @@ export function HotkeysScreen({
   }
 
   return (
-    <main className="content">
-      <div className="pane">
-        <img className="pane__art" src={characterArt} alt="" aria-hidden="true" />
-        <div className="pane__header">
-          <span className="pane__title">Kısayollar</span>
-          {listening ? (
-            <span className="badge badge--muted">
-              <span className="badge__dot badge__dot--success" />
-              Tuş bekleniyor — çıkmak için Esc
-            </span>
-          ) : (
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              disabled={isDefault}
-              onClick={() => patch({ hotkeys: DEFAULT_SETTINGS.hotkeys })}
-            >
-              <i className="ph ph-arrow-counter-clockwise" />
-              Varsayılana dön
-            </button>
-          )}
-        </div>
-        <div className="pane__body">
-          <Section title="Bağlar">
+    <>
+          <Section
+            title="Kısayollar"
+            aside={
+              listening ? (
+                <span className="badge badge--muted">
+                  <span className="badge__dot badge__dot--success" />
+                  Tuş bekleniyor — Esc ile çık
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={isDefault}
+                  onClick={() => patch({ hotkeys: DEFAULT_SETTINGS.hotkeys })}
+                >
+                  <i className="ph ph-arrow-counter-clockwise" />
+                  Varsayılana dön
+                </button>
+              )
+            }
+          >
             {BINDINGS.map((binding) => {
               const combo = settings.hotkeys[binding.key]
               const isListening = listening === binding.key
@@ -173,8 +170,6 @@ export function HotkeysScreen({
               Capture Assistant&apos;ın da yönetici olarak açılması gerekir.
             </p>
           </Section>
-        </div>
-      </div>
-    </main>
+    </>
   )
 }

@@ -4,7 +4,6 @@ import type { Settings } from '@shared/settings'
 import { Section, Setting, Slider, Switch } from '../components/controls'
 import { Select } from '../components/Select'
 import { api } from '../api'
-import { characterArt } from '../art'
 
 const DEFAULT_MIC = '__default__'
 const FLOOR_DB = -60
@@ -18,7 +17,7 @@ function Meter({ db, active }: { db: number; active: boolean }) {
   )
 }
 
-export function AudioScreen({
+export function AudioSections({
   settings,
   patch
 }: {
@@ -50,13 +49,7 @@ export function AudioScreen({
   }, [])
 
   return (
-    <main className="content">
-      <div className="pane">
-        <img className="pane__art" src={characterArt} alt="" aria-hidden="true" />
-        <div className="pane__header">
-          <span className="pane__title">Ses</span>
-        </div>
-        <div className="pane__body">
+    <>
           <Section title="Sistem sesi">
             <Setting
               label="Sistem sesini kaydet"
@@ -158,8 +151,6 @@ export function AudioScreen({
               }
             />
           </Section>
-        </div>
-      </div>
-    </main>
+    </>
   )
 }

@@ -64,10 +64,25 @@ export interface AppSettings {
   showCharacterArt: boolean
 }
 
+export interface ChatSettings {
+  /*
+   * Reads the chat FiveM has already drawn on screen, through the debugging
+   * endpoint its interface leaves open. Nothing is injected into the game and
+   * no input is sent. Off unless asked for — servers differ on whether outside
+   * chat logging is allowed.
+   */
+  enabled: boolean
+  archiveDir: string | null
+  showTimestamps: boolean
+  /* Whether the live view paints lines in the colours the server used. */
+  useServerColors: boolean
+}
+
 export interface Settings {
   capture: CaptureSettings
   replay: ReplaySettings
   audio: AudioSettings
+  chat: ChatSettings
   hotkeys: HotkeySettings
   output: OutputSettings
   app: AppSettings
@@ -97,6 +112,12 @@ export const DEFAULT_SETTINGS: Settings = {
     micEnabled: false,
     micDeviceId: null,
     micGain: 1
+  },
+  chat: {
+    enabled: false,
+    archiveDir: null,
+    showTimestamps: true,
+    useServerColors: true
   },
   hotkeys: {
     saveReplay: 'Alt+F10',

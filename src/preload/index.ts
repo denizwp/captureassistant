@@ -21,6 +21,18 @@ const api = {
   revealClipFolder: () => ipcRenderer.invoke('clips:reveal-folder'),
   revealLog: () => ipcRenderer.invoke('logs:reveal'),
 
+  chatStatus: () => ipcRenderer.invoke('chat:status'),
+  chatLines: () => ipcRenderer.invoke('chat:lines'),
+  listChatArchive: () => ipcRenderer.invoke('chat:archive-list'),
+  readChatArchive: (path: string) => ipcRenderer.invoke('chat:archive-read', path),
+  revealChatFolder: () => ipcRenderer.invoke('chat:reveal-folder'),
+  exportChat: (payload: {
+    source: 'live' | string
+    format: 'txt' | 'html'
+    kinds: string[]
+    query: string
+  }) => ipcRenderer.invoke('chat:export', payload),
+
   toggleReplayBuffer: (enabled: boolean) =>
     ipcRenderer.invoke('capture:toggle-replay', enabled) as Promise<void>,
   toggleRecording: () => ipcRenderer.invoke('capture:toggle-record') as Promise<void>,

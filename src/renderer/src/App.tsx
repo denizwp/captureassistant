@@ -7,19 +7,22 @@ import { useBusy } from './useBusy'
 import { formatBytes, formatClock } from './format'
 import { ClipsScreen } from './screens/Clips'
 import { RecordingScreen } from './screens/Recording'
-import { AudioScreen } from './screens/Audio'
-import { HotkeysScreen } from './screens/Hotkeys'
 import { GeneralScreen } from './screens/General'
+import { ChatScreen } from './screens/Chat'
 import { QuickActions } from './components/QuickActions'
 import { Toasts } from './components/Toasts'
 import logo from '../assets/logo.png'
 
+/*
+ * Four entries rather than six. Sound is part of what the capture is set up to
+ * do, and the key bindings are a settings list like any other — keeping them
+ * apart only made the list longer to read through.
+ */
 const SCREENS = [
   { id: 'clips', label: 'Kayıtlar', icon: 'ph-film-strip' },
-  { id: 'recording', label: 'Kayıt', icon: 'ph-record' },
-  { id: 'audio', label: 'Ses', icon: 'ph-speaker-high' },
-  { id: 'hotkeys', label: 'Kısayollar', icon: 'ph-keyboard' },
-  { id: 'general', label: 'Genel', icon: 'ph-gear' }
+  { id: 'recording', label: 'Kayıt ve ses', icon: 'ph-record' },
+  { id: 'chat', label: 'Chatlog', icon: 'ph-chat-text' },
+  { id: 'general', label: 'Ayarlar', icon: 'ph-gear' }
 ] as const
 
 type ScreenId = (typeof SCREENS)[number]['id']
@@ -125,8 +128,7 @@ export function App() {
         {screen === 'recording' && (
           <RecordingScreen settings={settings} state={state} patch={patch} busy={busy} />
         )}
-        {screen === 'audio' && <AudioScreen settings={settings} patch={patch} />}
-        {screen === 'hotkeys' && <HotkeysScreen settings={settings} patch={patch} />}
+        {screen === 'chat' && <ChatScreen settings={settings} patch={patch} />}
         {screen === 'general' && <GeneralScreen settings={settings} patch={patch} />}
       </div>
 

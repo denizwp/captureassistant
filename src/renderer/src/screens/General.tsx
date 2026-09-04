@@ -3,6 +3,7 @@ import type { IndicatorCorner, Settings } from '@shared/settings'
 import { api } from '../api'
 import { Section, Segmented, Setting, Slider, Switch } from '../components/controls'
 import { characterArt } from '../art'
+import { HotkeySections } from './Hotkeys'
 
 const CORNERS: { value: IndicatorCorner; label: string }[] = [
   { value: 'bottom-right', label: 'Sağ alt' },
@@ -160,6 +161,8 @@ export function GeneralScreen({
               }
             />
           </Section>
+
+          <HotkeySections settings={settings} patch={patch} />
         </div>
       </div>
     </main>

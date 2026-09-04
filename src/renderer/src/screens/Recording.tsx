@@ -8,6 +8,7 @@ import { estimateRingBytes, formatBytes, formatDuration } from '../format'
 import { Section, Segmented, Setting, Slider, Switch } from '../components/controls'
 import { Select } from '../components/Select'
 import { characterArt } from '../art'
+import { AudioSections } from './Audio'
 
 const PRESET_MAXRATE_KBPS: Record<QualityPreset, number> = {
   low: 20_000,
@@ -249,6 +250,8 @@ export function RecordingScreen({
               }
             />
           </Section>
+
+          <AudioSections settings={settings} patch={patch} />
         </div>
       </div>
     </main>

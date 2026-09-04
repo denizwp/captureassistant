@@ -107,10 +107,22 @@ export function Setting({
   )
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({
+  title,
+  aside,
+  children
+}: {
+  title: string
+  /* Sits opposite the title — where a section-wide action or status belongs. */
+  aside?: ReactNode
+  children: ReactNode
+}) {
   return (
     <section className="section">
-      <h2 className="section__title">{title}</h2>
+      <div className="section__head">
+        <h2 className="section__title">{title}</h2>
+        {aside}
+      </div>
       {children}
     </section>
   )

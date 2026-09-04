@@ -3,6 +3,8 @@ import { app, session } from 'electron'
 import { discardLegacyUserData, SettingsStore } from './store'
 import { beginQuit, createMainWindow } from './windows'
 import { broadcast, registerIpc } from './ipc'
+import { ChatCapture } from './chat'
+import { chatArchiveDir, registerChatIpc } from './chat/ipc'
 import { AudioEngine } from './audio'
 import { ringDirFor, SupervisorHost } from './supervisor'
 import { TrayController } from './tray'
@@ -17,6 +19,7 @@ import { Hud } from './hud'
 import { logEntry, writeHeader } from './log'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
+import { runChatSelfTest } from './chat-selftest'
 
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
 
@@ -183,6 +186,12 @@ if (!singleInstance) {
       return
     }
 
+    if (process.argv.includes('--chat-test')) {
+      await runChatSelfTest()
+      app.quit()
+      return
+    }
+
     if (process.argv.includes('--audio-test')) {
       await runAudioSelfTest(audio, store)
       app.quit()
@@ -282,6 +291,17 @@ if (!singleInstance) {
 
     if (store.get().replay.enabled) void actions.toggleReplay(true)
 
+    const chat = new ChatCapture(chatArchiveDir(store))
+    chat.on('status', (status: unknown) => broadcast('chat-status', status))
+    chat.on('lines', (lines: unknown) => broadcast('chat-lines', lines))
+    registerChatIpc(store, chat)
+    const syncChat = (): void => {
+      chat.setRoot(chatArchiveDir(store))
+      if (store.get().chat.enabled) chat.start()
+      else void chat.stop()
+    }
+    syncChat()
+
     registerIpc(store, audio, supervisor, {
       onSettingsChanged: () => {
         tray.refresh()
@@ -289,6 +309,7 @@ if (!singleInstance) {
         overlay.update(supervisor.getState(), store.get().app)
         hud.setTheme(store.get().app.theme)
         void syncAudio()
+        syncChat()
       },
       toggleReplay: (enabled: boolean) => actions.toggleReplay(enabled),
       toggleRecording: () => actions.toggleRecording(),

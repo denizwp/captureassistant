@@ -1,6 +1,7 @@
 import type { DeepPartial } from '@shared/ipc'
 import type { Settings } from '@shared/settings'
 import type { Clip, SupervisorState } from '@shared/state'
+import type { ArchiveEntry, ChatKind, ChatLine, ChatStatus } from '@shared/chat'
 
 export interface MonitorInfo {
   id: string
@@ -27,6 +28,17 @@ interface CaptureApi {
   deleteClip(path: string): Promise<void>
   revealClipFolder(): Promise<void>
   revealLog(): Promise<void>
+  chatStatus(): Promise<ChatStatus>
+  chatLines(): Promise<ChatLine[]>
+  listChatArchive(): Promise<ArchiveEntry[]>
+  readChatArchive(path: string): Promise<ChatLine[]>
+  revealChatFolder(): Promise<void>
+  exportChat(payload: {
+    source: 'live' | string
+    format: 'txt' | 'html'
+    kinds: ChatKind[]
+    query: string
+  }): Promise<string | null>
   toggleReplayBuffer(enabled: boolean): Promise<void>
   toggleRecording(): Promise<void>
   saveReplay(): Promise<void>

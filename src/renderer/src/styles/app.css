@@ -139,8 +139,15 @@
 
 .section { display: grid; }
 .section + .section { margin-top: var(--space-6); }
-.section__title {
+.section__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
     margin-bottom: var(--space-1);
+    min-height: 26px;
+}
+.section__title {
     font-size: var(--text-base);
     font-weight: var(--fw-medium);
     color: var(--text-default);
@@ -526,3 +533,46 @@
   transition: width 80ms linear;
 }
 
+
+/* Sohbet */
+.chatbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+}
+.chatbar--sub { margin-top: var(--space-1); }
+.chatbar__filters { display: flex; flex-wrap: wrap; gap: var(--space-1-5); min-width: 0; }
+.chatbar__actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+.chatbar__search { width: 180px; flex-shrink: 0; }
+
+.chip {
+    padding: 3px 10px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--surface-recessed);
+    color: var(--text-subtle);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    box-shadow: var(--ring-hairline);
+}
+.chip.is-on { background: var(--surface-elevated); color: var(--text-default); box-shadow: var(--ring-line); }
+
+.chatlog {
+    height: 340px;
+    overflow-y: auto;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-lg);
+    background: var(--surface-recessed);
+    box-shadow: var(--ring-hairline);
+    font-family: "Consolas", "Cascadia Mono", ui-monospace, monospace;
+    font-size: var(--text-sm);
+    line-height: 1.55;
+    margin-bottom: var(--space-6);
+}
+.chatline { display: flex; gap: var(--space-2); align-items: baseline; }
+.chatline:hover { background: var(--surface-elevated); }
+.chatline__time { color: var(--text-subtle); flex-shrink: 0; opacity: .7; }
+.chatline__text { white-space: pre-wrap; word-break: break-word; min-width: 0; }
+.chatline--system .chatline__text { color: var(--text-subtle); font-style: italic; }
