@@ -85,6 +85,8 @@ export interface ChatSettings {
   showTimestamps: boolean
   /* Whether the live view paints lines in the colours the server used. */
   useServerColors: boolean
+  /* Keep the newest line in sight instead of holding the view where it was. */
+  followTail: boolean
 }
 
 export interface Settings {
@@ -127,7 +129,8 @@ export const DEFAULT_SETTINGS: Settings = {
     archiveDir: null,
     saveWithClips: true,
     showTimestamps: true,
-    useServerColors: true
+    useServerColors: true,
+    followTail: true
   },
   hotkeys: {
     saveReplay: 'Alt+F10',

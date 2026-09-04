@@ -1,4 +1,4 @@
-import { app, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { mkdir } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import type { ArchiveEntry, ChatKind, ChatLine } from '@shared/chat'
@@ -87,7 +87,7 @@ export function registerChatIpc(store: SettingsStore, chat: ChatCapture): void {
   ipcMain.handle(
     'chat:export',
     async (
-      _e,
+      event,
       payload: { source: 'live' | string; format: 'txt' | 'html'; kinds: ChatKind[]; query: string }
     ): Promise<string | null> => {
       const live = payload.source === 'live'
@@ -114,10 +114,25 @@ export function registerChatIpc(store: SettingsStore, chat: ChatCapture): void {
           ` - ${pad(stamp.getHours())}.${pad(stamp.getMinutes())}`
         : basename(payload.source, '.txt')
 
-      const target = join(app.getPath('downloads'), `${name}.${payload.format}`)
+      // Where it goes is the user's call. Dropping it into Downloads meant
+      // hunting for it afterwards, and there is nowhere sensible to guess.
+      const owner = BrowserWindow.fromWebContents(event.sender)
+      const options: Electron.SaveDialogOptions = {
+        title: 'Sohbeti kaydet',
+        defaultPath: join(app.getPath('documents'), `${name}.${payload.format}`),
+        filters:
+          payload.format === 'txt'
+            ? [{ name: 'Metin dosyası', extensions: ['txt'] }]
+            : [{ name: 'Web sayfası', extensions: ['html'] }]
+      }
+      const chosen = owner
+        ? await dialog.showSaveDialog(owner, options)
+        : await dialog.showSaveDialog(options)
+      if (chosen.canceled || !chosen.filePath) return null
+
+      const target = chosen.filePath
       if (payload.format === 'txt') await exportText(target, kept)
       else await exportHtml(target, name, kept)
-      shell.showItemInFolder(target)
       return target
     }
   )

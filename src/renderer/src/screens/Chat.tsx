@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DeepPartial } from '@shared/ipc'
 import type { Settings } from '@shared/settings'
 import type { ArchiveEntry, ChatKind, ChatLine, ChatStatus } from '@shared/chat'
@@ -90,6 +90,33 @@ export function ChatScreen({
         (!needle || line.text.toLocaleLowerCase('tr').includes(needle))
     )
   }, [source, kinds, query])
+
+  /*
+   * Chat reads bottom-up: the line that just arrived is the one being waited
+   * for. The view is dragged along only when it was already at the end, so
+   * scrolling back to read something does not get yanked away mid-sentence.
+   */
+  const log = useRef<HTMLDivElement>(null)
+  const pinned = useRef(true)
+
+  useEffect(() => {
+    const box = log.current
+    if (!box || !chat.followTail) return
+    if (pinned.current) box.scrollTop = box.scrollHeight
+  }, [shown, chat.followTail])
+
+  useEffect(() => {
+    const box = log.current
+    if (!box) return
+    pinned.current = true
+    box.scrollTop = box.scrollHeight
+  }, [opened])
+
+  const onScroll = (): void => {
+    const box = log.current
+    if (!box) return
+    pinned.current = box.scrollHeight - box.scrollTop - box.clientHeight < 60
+  }
 
   const toggleKind = (kind: ChatKind): void =>
     setKinds((current) =>
@@ -205,7 +232,7 @@ export function ChatScreen({
                 </div>
               </div>
 
-              <div className="chatlog">
+              <div className="chatlog" ref={log} onScroll={onScroll}>
                 {shown.length === 0 ? (
                   <p className="empty__hint" style={{ padding: 'var(--space-4)' }}>
                     {source.length === 0
@@ -306,6 +333,17 @@ export function ChatScreen({
                   label="Saat göster"
                   checked={chat.showTimestamps}
                   onChange={(showTimestamps) => patch({ chat: { showTimestamps } })}
+                />
+              }
+            />
+            <Setting
+              label="Yeni mesajda aşağı kay"
+              hint="Açıkken en yeni satır görünür kalır. Geri kaydırıp okurken yerinden oynatmaz."
+              control={
+                <Switch
+                  label="Yeni mesajda aşağı kay"
+                  checked={chat.followTail}
+                  onChange={(followTail) => patch({ chat: { followTail } })}
                 />
               }
             />
