@@ -36,6 +36,7 @@ export class ChatCapture extends EventEmitter {
   private nextId = 1
   private sawServer = ''
   private readonly names = new Map<string, { name: string; retryAt: number }>()
+  private keeping = true
   /* Where chat was found: which frame's world, and the selector inside it. */
   private where: string | null = null
   private world: number | undefined = undefined
@@ -55,6 +56,10 @@ export class ChatCapture extends EventEmitter {
 
   setRoot(root: string): void {
     this.archive.setRoot(root)
+  }
+
+  setArchiving(on: boolean): void {
+    this.keeping = on
   }
 
   start(): void {
@@ -130,13 +135,15 @@ export class ChatCapture extends EventEmitter {
     if (server !== this.sawServer) {
       this.sawServer = server
       this.lastVisible = []
-      const marker = await this.archive.open(server, at)
-      if (marker) await this.archive.mark(marker, at)
-      await this.archive.mark(`Bağlanıldı: ${server}`, at)
-      // After a restart the file already holds part of what is on screen, so
-      // line up against its tail instead of writing all of it again.
-      this.lastVisible = await this.archive.tail(200)
-    } else {
+      if (this.keeping) {
+        const marker = await this.archive.open(server, at)
+        if (marker) await this.archive.mark(marker, at)
+        await this.archive.mark(`Bağlanıldı: ${server}`, at)
+        // After a restart the file already holds part of what is on screen, so
+        // line up against its tail instead of writing all of it again.
+        this.lastVisible = await this.archive.tail(200)
+      }
+    } else if (this.keeping) {
       const marker = await this.archive.open(server, at)
       if (marker) await this.archive.mark(marker, at)
     }
@@ -154,7 +161,7 @@ export class ChatCapture extends EventEmitter {
         written.push({ text: row.t, runs: toRuns(row) })
         this.lines.push(this.toLine(row, at))
       }
-      await this.archive.append(written)
+      if (this.keeping) await this.archive.append(written)
       if (this.lines.length > LIVE_LIMIT) this.lines = this.lines.slice(-LIVE_LIMIT)
       this.emit('lines', this.lines)
     }
@@ -163,7 +170,7 @@ export class ChatCapture extends EventEmitter {
       state: 'connected',
       serverName: server,
       serverAddress: address,
-      archiveFile: this.archive.currentFile,
+      archiveFile: this.keeping ? this.archive.currentFile : null,
       capturedToday: this.status.capturedToday + fresh.length,
       error: null
     })

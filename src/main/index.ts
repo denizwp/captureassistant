@@ -299,6 +299,7 @@ if (!singleInstance) {
     registerChatIpc(store, chat)
     const syncChat = (): void => {
       chat.setRoot(chatArchiveDir(store))
+      chat.setArchiving(store.get().chat.keepArchive)
       if (store.get().chat.enabled) chat.start()
       else void chat.stop()
     }

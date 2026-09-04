@@ -253,6 +253,7 @@ export function ChatScreen({
                 )}
               </div>
 
+              {chat.keepArchive && (
               <Section
                 title="Arşiv"
                 aside={
@@ -306,6 +307,7 @@ export function ChatScreen({
                   </div>
                 )}
               </Section>
+              )}
             </>
           )}
 
@@ -318,6 +320,18 @@ export function ChatScreen({
                   label="Sohbet takibi"
                   checked={chat.enabled}
                   onChange={(enabled) => patch({ chat: { enabled } })}
+                />
+              }
+            />
+            <Setting
+              label="Diske arşivle"
+              hint="Kapalıyken sohbet yalnızca bu pencerede durur, diske hiçbir dosya yazılmaz. İstediğini elle TXT olarak alırsın."
+              control={
+                <Switch
+                  label="Diske arşivle"
+                  checked={chat.keepArchive}
+                  disabled={!chat.enabled}
+                  onChange={(keepArchive) => patch({ chat: { keepArchive } })}
                 />
               }
             />
@@ -365,6 +379,7 @@ export function ChatScreen({
                 />
               }
             />
+            {chat.keepArchive && (
             <Setting
               label="Arşiv klasörü"
               hint="Günlük metin dosyaları buraya yazılır."
@@ -387,6 +402,7 @@ export function ChatScreen({
                 </div>
               }
             />
+            )}
             {status.error && status.state !== 'connected' && (
               <p className="section__note">Son durum: {status.error}</p>
             )}

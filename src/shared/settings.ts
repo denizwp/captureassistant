@@ -79,6 +79,12 @@ export interface ChatSettings {
    * chat logging is allowed.
    */
   enabled: boolean
+  /*
+   * Whether what is captured is also kept on disk. Off means the chat is only
+   * ever in the window — useful for someone who wants to watch it and take a
+   * copy by hand rather than accumulate a file a day.
+   */
+  keepArchive: boolean
   archiveDir: string | null
   /* Whether saving a clip also drops the matching chat beside it. */
   saveWithClips: boolean
@@ -126,6 +132,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   chat: {
     enabled: false,
+    keepArchive: true,
     archiveDir: null,
     saveWithClips: true,
     showTimestamps: true,
