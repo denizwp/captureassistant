@@ -62,6 +62,15 @@ export class ChatCapture extends EventEmitter {
     this.keeping = on
   }
 
+  /*
+   * Empties what the window is showing. The archive on disk is untouched — this
+   * is about the view being long, not about unsaying anything.
+   */
+  clearLines(): void {
+    this.lines = []
+    this.emit('lines', this.lines)
+  }
+
   start(): void {
     if (this.running) return
     this.running = true

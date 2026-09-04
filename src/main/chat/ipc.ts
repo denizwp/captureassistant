@@ -85,6 +85,7 @@ export async function writeChatBeside(
 export function registerChatIpc(store: SettingsStore, chat: ChatCapture): void {
   ipcMain.handle('chat:status', () => chat.getStatus())
   ipcMain.handle('chat:lines', () => chat.getLines())
+  ipcMain.handle('chat:clear', () => chat.clearLines())
 
   ipcMain.handle('chat:archive-list', async (): Promise<ArchiveEntry[]> => {
     const root = chatArchiveDir(store)

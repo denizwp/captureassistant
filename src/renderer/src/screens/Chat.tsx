@@ -211,6 +211,18 @@ export function ChatScreen({
                 </div>
                 <div className="chatbar__actions">
                   <span className="setting__hint">{shown.length} satır</span>
+                  {!opened && (
+                    <button
+                      type="button"
+                      className="btn btn--ghost btn--sm"
+                      title="Yalnızca bu pencereyi boşaltır, arşive dokunmaz."
+                      disabled={busy || live.length === 0}
+                      onClick={() => void api.clearChat()}
+                    >
+                      <i className="ph ph-eraser" />
+                      Temizle
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
@@ -325,7 +337,7 @@ export function ChatScreen({
             />
             <Setting
               label="Otomatik arşivle"
-              hint="Kapalıyken sohbet yalnızca bu pencerede durur, diske hiçbir dosya yazılmaz. İstediğini elle TXT olarak alırsın."
+              hint="Her gün ve her sunucu için kendiliğinden tutulan dosya. Kapalıyken sohbet yalnızca bu pencerede durur ve istediğini elle TXT olarak alırsın; aşağıdaki klip ayarı ayrı çalışır."
               control={
                 <Switch
                   label="Otomatik arşivle"

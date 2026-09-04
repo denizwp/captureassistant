@@ -23,6 +23,7 @@ const api = {
 
   chatStatus: () => ipcRenderer.invoke('chat:status'),
   chatLines: () => ipcRenderer.invoke('chat:lines'),
+  clearChat: () => ipcRenderer.invoke('chat:clear'),
   listChatArchive: () => ipcRenderer.invoke('chat:archive-list'),
   readChatArchive: (path: string) => ipcRenderer.invoke('chat:archive-read', path),
   revealChatFolder: () => ipcRenderer.invoke('chat:reveal-folder'),

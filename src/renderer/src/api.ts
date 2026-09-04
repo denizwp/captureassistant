@@ -30,6 +30,7 @@ interface CaptureApi {
   revealLog(): Promise<void>
   chatStatus(): Promise<ChatStatus>
   chatLines(): Promise<ChatLine[]>
+  clearChat(): Promise<void>
   listChatArchive(): Promise<ArchiveEntry[]>
   readChatArchive(path: string): Promise<ChatLine[]>
   revealChatFolder(): Promise<void>
