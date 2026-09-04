@@ -63,6 +63,14 @@ async function main() {
   const info = await stat(exe).catch(() => null)
   if (!info) throw new Error(`packaging produced no ${exe}`)
 
+  // The updater refuses to install a build it cannot check against a published
+  // checksum, and this manifest is where that checksum comes from. It has to be
+  // uploaded with the installer.
+  const manifest = join(root, 'release', 'latest.yml')
+  if (!(await stat(manifest).catch(() => null))) {
+    throw new Error('packaging produced no latest.yml — the updater needs its checksum')
+  }
+
   const unpacked = join(root, 'release', 'win-unpacked')
   for (const rel of [
     'Capture Assistant.exe',

@@ -495,6 +495,12 @@ async function saveReplay(): Promise<void> {
 async function buildClip(from: number, to: number, label: string): Promise<void> {
   if (!ring || !settings || !encoder) return
   const previous = state
+  /*
+   * Where the recorded stretch ends on the wall clock. Taken now rather than
+   * when the file lands, because joining the segments takes seconds and anyone
+   * lining something else up against the clip would be that much off.
+   */
+  const endedAt = Date.now()
   state = 'assembling'
   await publish()
 
@@ -521,7 +527,7 @@ async function buildClip(from: number, to: number, label: string): Promise<void>
     }
     if (result.note) log(result.note, 'info')
     log(`clip written: ${result.path}`, 'success')
-    send({ type: 'clip', path: result.path, durationSec: result.durationSec })
+    send({ type: 'clip', path: result.path, durationSec: result.durationSec, endedAt })
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     fail(`Klip oluşturulamadı: ${detail}`)

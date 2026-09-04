@@ -1,5 +1,5 @@
 import { app, screen } from 'electron'
-import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
+import { appendFileSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -44,6 +44,42 @@ export function write(line: string): void {
     const size = statSync(path, { throwIfNoEntry: false })?.size ?? 0
     if (size > MAX_BYTES) renameSync(path, `${path}.old`)
     appendFileSync(path, `${stamp()} ${line}\n`)
+  } catch {}
+}
+
+/*
+ * A file that exists only while the app is up.
+ *
+ * It is written on start and removed on a clean quit, so finding one already
+ * there means the previous run never got to shut down — a crash, a forced kill,
+ * or the machine going off. That is the single most useful thing to know when
+ * reading a log afterwards, and nothing else in the log says it: a run that
+ * dies leaves no closing line, which is indistinguishable from a run that is
+ * still going.
+ */
+function sessionMarkerPath(): string {
+  return join(logDir(), 'session.open')
+}
+
+export function openSession(): { previousRunCrashed: boolean } {
+  let previousRunCrashed = false
+  try {
+    mkdirSync(logDir(), { recursive: true })
+    previousRunCrashed = !!statSync(sessionMarkerPath(), { throwIfNoEntry: false })
+    writeFileSync(sessionMarkerPath(), new Date().toISOString())
+  } catch {}
+
+  if (previousRunCrashed) {
+    write('previous run did not shut down cleanly — everything above is from it')
+  }
+  write(`session start, version ${app.getVersion()}`)
+  return { previousRunCrashed }
+}
+
+export function closeSession(): void {
+  write('session end')
+  try {
+    unlinkSync(sessionMarkerPath())
   } catch {}
 }
 

@@ -47,9 +47,10 @@ function matches(line: ChatLine, kinds: ChatKind[], query: string): boolean {
 export async function writeChatBeside(
   lines: ChatLine[],
   clipPath: string,
-  durationSec: number
+  durationSec: number,
+  endedAt?: number
 ): Promise<string | null> {
-  const until = Date.now()
+  const until = endedAt ?? Date.now()
   const since = until - durationSec * 1000
   const covered = lines.filter((line) => line.at >= since && line.at <= until)
   if (covered.length === 0) return null

@@ -53,9 +53,16 @@ export interface OutputSettings {
   filenameTemplate: string
 }
 
+/*
+ * 'stable' takes only finished releases. 'canary' takes the test builds first,
+ * and falls back to stable when none is published.
+ */
+export type UpdateChannel = 'stable' | 'canary'
+
 export interface AppSettings {
   minimizeToTray: boolean
   launchAtLogin: boolean
+  updateChannel: UpdateChannel
   theme: 'dark' | 'light'
   indicatorCorner: IndicatorCorner
   indicatorOpacity: number
@@ -134,6 +141,7 @@ export const DEFAULT_SETTINGS: Settings = {
   app: {
     minimizeToTray: true,
     launchAtLogin: false,
+    updateChannel: 'stable',
     theme: 'dark',
     indicatorCorner: 'bottom-right',
     indicatorOpacity: 0.9,

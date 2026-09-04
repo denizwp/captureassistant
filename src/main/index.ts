@@ -16,7 +16,7 @@ import { pruneThumbnails } from './thumbnails'
 import { AppAudioCapture } from './app-audio'
 import { checkForUpdate, discardOldBuild, runUpdateSelfTest } from './updater'
 import { Hud } from './hud'
-import { logEntry, writeHeader } from './log'
+import { closeSession, logEntry, openSession, writeHeader } from './log'
 import { runAudioSelfTest } from './audio-selftest'
 import { runCaptureSelfTest } from './capture-selftest'
 import { runChatSelfTest } from './chat-selftest'
@@ -181,7 +181,7 @@ if (!singleInstance) {
     }
 
     if (process.argv.includes('--update-test')) {
-      await runUpdateSelfTest()
+      await runUpdateSelfTest(store.get().app.updateChannel)
       app.quit()
       return
     }
@@ -211,6 +211,7 @@ if (!singleInstance) {
     supervisor.on('clip', (clip: { path: string; durationSec: number }) =>
       logEntry('info', `clip written: ${clip.path} (${clip.durationSec.toFixed(1)}s)`)
     )
+    const { previousRunCrashed } = openSession()
     void writeHeader(store.get(), ringDirFor(store.get()), store.get().output.dir ?? '')
 
     supervisor.start(store.get())
@@ -307,9 +308,9 @@ if (!singleInstance) {
      * being followed, the lines covering the same stretch of time are written
      * beside it under the same name, so the two travel together.
      */
-    supervisor.on('clip', (clip: { path: string; durationSec: number }) => {
+    supervisor.on('clip', (clip: { path: string; durationSec: number; endedAt?: number }) => {
       if (!store.get().chat.enabled) return
-      void writeChatBeside(chat.getLines(), clip.path, clip.durationSec)
+      void writeChatBeside(chat.getLines(), clip.path, clip.durationSec, clip.endedAt)
         .then((written) => {
           if (written) logEntry('info', `chat written beside clip: ${written}`)
         })
@@ -338,12 +339,25 @@ if (!singleInstance) {
 
     hud.create(store.get().app.theme)
 
+    if (previousRunCrashed) {
+      // Said once, and only to someone who can act on it: the log already holds
+      // what the run was doing, and it is the thing worth sending on.
+      setTimeout(
+        () =>
+          broadcast('toast', {
+            kind: 'warning',
+            message: 'Uygulama geçen sefer beklenmedik şekilde kapanmış. Günlük Ayarlar’da.'
+          }),
+        2500
+      )
+    }
+
     void pruneThumbnails()
     void discardLegacyUserData()
     void discardOldBuild()
     setTimeout(
       () =>
-        void checkForUpdate({
+        void checkForUpdate(store.get().app.updateChannel, {
           onDownloadStart: () => {
             setBusy('update')
             broadcast('toast', { kind: 'info', message: 'Güncelleme indiriliyor…' })
@@ -370,6 +384,7 @@ if (!singleInstance) {
     beginQuit()
     supervisor.shutdown()
     void audio.close()
+    closeSession()
   })
 
   app.on('window-all-closed', () => {

@@ -1,5 +1,5 @@
 import type { DeepPartial } from '@shared/ipc'
-import type { IndicatorCorner, Settings } from '@shared/settings'
+import type { IndicatorCorner, Settings, UpdateChannel } from '@shared/settings'
 import { api } from '../api'
 import { Section, Segmented, Setting, Slider, Switch } from '../components/controls'
 import { characterArt } from '../art'
@@ -143,6 +143,31 @@ export function GeneralScreen({
                 </div>
               }
             />
+          </Section>
+
+          <Section title="Güncelleme">
+            <Setting
+              label="Sürüm kanalı"
+              hint={
+                app.updateChannel === 'canary'
+                  ? 'Yeni özellikler önce buraya gelir, karşılığında daha sık ve daha ham güncelleme alırsın.'
+                  : 'Yalnızca tamamlanmış sürümler. Çoğu kişi için doğrusu bu.'
+              }
+              control={
+                <Segmented<UpdateChannel>
+                  value={app.updateChannel}
+                  onChange={(updateChannel) => patch({ app: { updateChannel } })}
+                  options={[
+                    { value: 'stable', label: 'Kararlı' },
+                    { value: 'canary', label: 'Erken' }
+                  ]}
+                />
+              }
+            />
+            <p className="section__note">
+              İndirilen her kurulum, çalıştırılmadan önce yayınlanan sürümün parmak iziyle
+              karşılaştırılır. Eşleşmezse kurulmaz.
+            </p>
           </Section>
 
           <Section title="Sorun bildirme">
