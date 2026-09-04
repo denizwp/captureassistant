@@ -59,6 +59,16 @@ klipslerin yerinde kalır.
 İndirme ~77 MB ve içinde çalışması için gereken her şey var; kurulumdan sonra
 hiçbir şey indirmiyor.
 
+## Güncelleme
+
+İki kanal var: **Kararlı** yalnızca tamamlanmış sürümleri alır, **Erken** test
+yapılarını önce alır ve yayınlanmış bir test yapısı yoksa kararlıya düşer.
+Ayarlar ekranından değiştirilir.
+
+İndirilen kurulum, çalıştırılmadan önce sürümle birlikte yayınlanan SHA-512
+parmak iziyle karşılaştırılır. Eşleşmezse dosya silinir ve kurulum yapılmaz —
+yarım inen bir dosya, uygulamayı bozuk bırakan kurulumun tam olarak şeklidir.
+
 ## Kısayollar
 
 | Tuş | Aksiyon |
@@ -154,8 +164,13 @@ CA_DEBUG_HOTKEYS=1 npx electron . # hook'un gördüğü her tuşu loglar
 Kabuğunda `ELECTRON_RUN_AS_NODE` ayarlıysa hepsi sessizce düz Node olarak açılır
 ve hiçbir pencere görünmez; `env -u ELECTRON_RUN_AS_NODE ...` ile başlat.
 
-Üçü de `%TEMP%` altına log yazıyor. Supervisor'ın yaşam döngüsü her zaman
+Hepsi `%TEMP%` altına log yazıyor. Supervisor'ın yaşam döngüsü her zaman
 `%TEMP%\ca-supervisor.log`'a düşüyor.
+
+Kullanıcı günlüğü `%APPDATA%\Capture Assistant\logs` altında ve her açılışta
+oturumun açıldığını işaretliyor. Uygulama temiz kapanmadan giderse bu işaret
+kalıyor ve bir sonraki açılışta günlüğe *previous run did not shut down cleanly*
+satırı düşüyor — çökme sonrası gelen bir raporda ilk bakılacak yer orası.
 
 ## Lisans
 
