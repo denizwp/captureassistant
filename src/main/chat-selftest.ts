@@ -18,7 +18,11 @@ import { exportHtml, exportText } from './chat/export'
  * real code, running the way it will run in front of a server.
  */
 
-const PORT = 13172
+/*
+ * Not the port the game uses. Binding that one would fail whenever FiveM is
+ * already running, which is exactly when someone is most likely to run this.
+ */
+const PORT = 13999
 
 interface Fake {
   close: () => Promise<void>
@@ -54,17 +58,57 @@ function startFakeGame(): Promise<Fake> {
       socket.on('message', (data) => {
         const message = JSON.parse(data.toString()) as {
           id: number
-          params?: { expression?: string }
+          method?: string
+          params?: { expression?: string; contextId?: number }
         }
+
+        /*
+         * Frames announce themselves after Runtime.enable, which is how the
+         * reader learns there is somewhere other than the outer document to
+         * look. Chat only answers in world 7, so a reader that ignores worlds
+         * gets nothing here — exactly as it would in the game.
+         */
+        if (message.method === 'Runtime.enable') {
+          socket.send(JSON.stringify({ id: message.id, result: {} }))
+          for (const world of [
+            { id: 7, origin: 'https://cfx-nui-chat', name: 'chat' },
+            { id: 9, origin: 'https://cfx-nui-hud', name: 'hud' }
+          ]) {
+            socket.send(
+              JSON.stringify({
+                method: 'Runtime.executionContextCreated',
+                params: { context: world }
+              })
+            )
+          }
+          return
+        }
+
         const expression = message.params?.expression ?? ''
-        const value = expression.includes('nuiHandoverData')
-          ? JSON.stringify(server)
-          : JSON.stringify(rows)
-        socket.send(JSON.stringify({ id: message.id, result: { result: { value } } }))
+        const world = message.params?.contextId
+        let value: string | null = null
+
+        if (expression.includes('nuiHandoverData')) {
+          value = JSON.stringify(server)
+        } else if (expression.includes('pathTo')) {
+          value =
+            world === 7
+              ? JSON.stringify({ path: '#chat > div', rows: rows.length, sample: rows[0]?.t ?? '' })
+              : 'null'
+        } else if (expression.includes('querySelector')) {
+          value = world === 7 ? JSON.stringify(rows) : 'null'
+        }
+
+        socket.send(
+          JSON.stringify({ id: message.id, result: { result: { value: value ?? 'null' } } })
+        )
       })
     })
 
     http.on('error', reject)
+    // Bound before anything reads it, and the client is pointed here for the
+    // rest of the process.
+    process.env['CA_CHAT_PORT'] = String(PORT)
     http.listen(PORT, '127.0.0.1', () => {
       resolve({
         close: () =>

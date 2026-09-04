@@ -17,6 +17,79 @@ export interface RawLine {
   r: RawRun[]
 }
 
+export interface ChatLocation {
+  path: string
+  rows: number
+  sample: string
+}
+
+/*
+ * Finding the chat without being told where it is.
+ *
+ * Servers replace the stock chat with their own, so matching on a class name
+ * only works until someone reskins it. Instead every element is scored on how
+ * much it looks like a chat log from the outside: a stack of children that each
+ * carry their own line of text, most of them opening with a clock. Whatever
+ * scores highest wins, and a path to it is handed back so the reading that
+ * follows costs one lookup instead of another sweep.
+ */
+export const FIND_CHAT = `JSON.stringify((function () {
+  function pathTo(el) {
+    var parts = [];
+    while (el && el.nodeType === 1 && el !== document.body) {
+      if (el.id) { parts.unshift('#' + CSS.escape(el.id)); break; }
+      var parent = el.parentElement;
+      if (!parent) break;
+      var index = 1;
+      for (var i = 0; i < parent.children.length; i++) {
+        if (parent.children[i] === el) break;
+        if (parent.children[i].tagName === el.tagName) index++;
+      }
+      parts.unshift(el.tagName.toLowerCase() + ':nth-of-type(' + index + ')');
+      el = parent;
+    }
+    return parts.length ? parts.join(' > ') : 'body';
+  }
+
+  var best = null;
+  var bestScore = 0;
+  var all = document.getElementsByTagName('*');
+
+  for (var i = 0; i < all.length; i++) {
+    var node = all[i];
+    var kids = node.children;
+    if (kids.length < 2 || kids.length > 400) continue;
+
+    var withText = 0;
+    var stamped = 0;
+    for (var k = 0; k < kids.length; k++) {
+      var text = (kids[k].innerText || '').trim();
+      if (!text || text.length > 600) continue;
+      withText++;
+      if (/^[\\[(]?\\d{1,2}:\\d{2}/.test(text)) stamped++;
+    }
+    if (withText < 2) continue;
+
+    /*
+     * A clock on most children is the strongest sign, since a menu or an
+     * inventory list never has one. The name is only a nudge on top, for the
+     * servers that did keep something recognisable.
+     */
+    var score = withText + stamped * 4;
+    var name = ((typeof node.className === 'string' ? node.className : '') + ' ' + (node.id || '')).toLowerCase();
+    if (name.indexOf('chat') >= 0 || name.indexOf('message') >= 0) score += 25;
+    if (score > bestScore) { bestScore = score; best = node; }
+  }
+
+  if (!best) return null;
+  var first = '';
+  for (var j = 0; j < best.children.length; j++) {
+    var t = (best.children[j].innerText || '').trim();
+    if (t) { first = t; break; }
+  }
+  return { path: pathTo(best), rows: best.children.length, sample: first.slice(0, 120) };
+})())`
+
 /*
  * Chat is a list of rows. Each row can mix colours — a name in one colour and
  * what they said in another — so the text is collected character by character
@@ -26,8 +99,10 @@ export interface RawLine {
  * Whitespace is collapsed on the way through. The game pads rows for layout,
  * and keeping that padding would make every archived line ragged.
  */
-export const READ_CHAT = `JSON.stringify((function () {
-  var rows = document.querySelectorAll('.chat-messages > *, .chat__messages > li, #chat-messages > *');
+export function readChat(path: string): string {
+  return `JSON.stringify((function () {
+  var host = document.querySelector(${JSON.stringify(path)});
+  if (!host) return null;
   function hex(node) {
     var el = node.nodeType === 1 ? node : node.parentElement;
     if (!el) return '#ffffff';
@@ -81,12 +156,13 @@ export const READ_CHAT = `JSON.stringify((function () {
     return { t: text, r: runs };
   }
   var out = [];
-  for (var i = 0; i < rows.length; i++) {
-    var line = readRow(rows[i]);
+  for (var i = 0; i < host.children.length; i++) {
+    var line = readRow(host.children[i]);
     if (line.t) out.push(line);
   }
   return out;
 })())`
+}
 
 /*
  * Which server this is. The loading screen leaves its handover data on the
@@ -105,4 +181,38 @@ export const READ_SERVER = `JSON.stringify((function () {
 export interface ServerHint {
   address: string
   name: string
+}
+
+/*
+ * The handover data only exists while the loading screen does, so by the time
+ * anyone opens this the friendly name is usually gone and all that is left is
+ * an address. Every Cfx server answers with its own details on the port it is
+ * running on, which is where the name comes from once play has started.
+ */
+export async function resolveServerName(address: string): Promise<string | null> {
+  const info = (await fetch(`http://${address}/info.json`, {
+    signal: AbortSignal.timeout(2500)
+  })
+    .then((response) => (response.ok ? response.json() : null))
+    .catch(() => null)) as { vars?: Record<string, unknown> } | null
+
+  const vars = info?.vars ?? {}
+  for (const key of ['sv_projectName', 'sv_hostname', 'serverName']) {
+    const value = vars[key]
+    if (typeof value === 'string' && value.trim()) return clean(value)
+  }
+  return null
+}
+
+/*
+ * Server names are written for the in-game list, which paints them from ^1-style
+ * colour codes and strips its own markup. Left in, they end up in file names.
+ */
+function clean(name: string): string {
+  return name
+    .replace(/\^\d/g, '')
+    .replace(/~[a-z]~/gi, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }

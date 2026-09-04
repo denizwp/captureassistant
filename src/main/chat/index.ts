@@ -2,7 +2,15 @@ import { EventEmitter } from 'node:events'
 import type { ChatLine, ChatStatus } from '@shared/chat'
 import { INITIAL_CHAT_STATUS } from '@shared/chat'
 import { DevToolsPage } from './cdp'
-import { READ_CHAT, READ_SERVER, type RawLine, type ServerHint } from './read'
+import {
+  FIND_CHAT,
+  READ_SERVER,
+  readChat,
+  resolveServerName,
+  type ChatLocation,
+  type RawLine,
+  type ServerHint
+} from './read'
 import { classify, resolveMoment, splitTimestamp } from './classify'
 import { ChatArchive, newLinesOnly, type ArchivedLine } from './archive'
 
@@ -27,6 +35,10 @@ export class ChatCapture extends EventEmitter {
   private archive: ChatArchive
   private nextId = 1
   private sawServer = ''
+  private readonly names = new Map<string, { name: string; retryAt: number }>()
+  /* Where chat was found: which frame's world, and the selector inside it. */
+  private where: string | null = null
+  private world: number | undefined = undefined
 
   constructor(root: string) {
     super()
@@ -97,8 +109,22 @@ export class ChatCapture extends EventEmitter {
       return
     }
 
-    const server = hint?.name?.trim() || address
-    const rows = (await page.evaluate<RawLine[]>(READ_CHAT)) ?? []
+    const server = hint?.name?.trim() || (await this.nameFor(address))
+
+    /*
+     * A null answer means the element that was found is gone — the chat was
+     * rebuilt, or the interface reloaded. Look again rather than sitting on a
+     * path that will never match anything.
+     */
+    let rows = this.where
+      ? await page.evaluate<RawLine[]>(readChat(this.where), this.world)
+      : null
+    if (rows === null) {
+      await this.connect()
+      rows = this.where
+        ? ((await this.page?.evaluate<RawLine[]>(readChat(this.where), this.world)) ?? [])
+        : []
+    }
     const at = new Date()
 
     if (server !== this.sawServer) {
@@ -165,45 +191,77 @@ export class ChatCapture extends EventEmitter {
     }
   }
 
+  /*
+   * Asked once per address and kept. A server that does not answer falls back
+   * to its address, and is asked again after a while rather than being written
+   * off — the endpoint is often just slow to come up right after connecting.
+   */
+  private async nameFor(address: string): Promise<string> {
+    const known = this.names.get(address)
+    if (known && (known.name || Date.now() < known.retryAt)) return known.name || address
+
+    const name = await resolveServerName(address).catch(() => null)
+    this.names.set(address, { name: name ?? '', retryAt: Date.now() + 60_000 })
+    return name ?? address
+  }
+
+  /*
+   * Several frames are listening and only one of them draws chat. Each is asked
+   * to look for something chat-shaped inside itself, and whichever finds the
+   * most convincing one is kept along with the path it found, so every later
+   * read is a single lookup.
+   */
   private async connect(): Promise<void> {
     await this.disconnect(null)
     const targets = await DevToolsPage.listPages()
     if (targets.length === 0) throw new Error('oyun arayüzü bulunamadı')
 
-    /*
-     * Several frames are listening and only one of them draws chat. Rather than
-     * matching on a url that a game update could rename, each is asked for the
-     * chat and the first that answers with rows is kept.
-     */
-    let fallback: DevToolsPage | null = null
+    let best: { page: DevToolsPage; world: number; found: ChatLocation } | null = null
+    const looked: string[] = []
+
     for (const target of targets) {
       const page = new DevToolsPage()
       try {
         await page.attach(target)
-        const rows = await page.evaluate<RawLine[]>(READ_CHAT)
-        if (rows && rows.length > 0) {
-          this.page = page
-          return
+        const worlds = await page.findWorlds()
+        // The outer document counts too: a server that draws chat itself rather
+        // than through a resource has it there.
+        const ids = [undefined, ...worlds.map((world) => world.id)]
+
+        for (const id of ids) {
+          const found = await page.evaluate<ChatLocation>(FIND_CHAT, id).catch(() => null)
+          const where = worlds.find((world) => world.id === id)?.origin ?? 'kök'
+          if (!found?.path) continue
+          looked.push(`${where}:${found.rows}`)
+          if (!best || found.rows > best.found.rows) {
+            if (best && best.page !== page) best.page.close()
+            best = { page, world: id ?? -1, found }
+          }
         }
-        // Empty chat is normal on a quiet server, so keep the first frame that
-        // at least answered as a fallback rather than discarding everything.
-        if (rows && !fallback) fallback = page
-        else page.close()
+        if (best?.page !== page) page.close()
       } catch {
         page.close()
       }
     }
 
-    if (fallback) {
-      this.page = fallback
-      return
-    }
-    throw new Error('sohbet penceresi bulunamadı')
+    if (!best) throw new Error('sohbet penceresi bulunamadı')
+    this.page = best.page
+    this.world = best.world < 0 ? undefined : best.world
+    this.where = best.found.path
+    // Written once per attach. When someone reports an empty chat this line is
+    // what says whether nothing was found, or the wrong thing was.
+    this.emit(
+      'note',
+      `sohbet bulundu: ${best.found.path} (${best.found.rows} satır) — ` +
+        `${best.found.sample} | bakılanlar: ${looked.join(', ') || 'yok'}`
+    )
   }
 
   private async disconnect(marker: string | null): Promise<void> {
     this.page?.close()
     this.page = null
+    this.where = null
+    this.world = undefined
     if (marker && this.sawServer) {
       await this.archive.mark(marker, new Date()).catch(() => undefined)
     }

@@ -294,6 +294,7 @@ if (!singleInstance) {
 
     const chat = new ChatCapture(chatArchiveDir(store))
     chat.on('status', (status: unknown) => broadcast('chat-status', status))
+    chat.on('note', (line: unknown) => logEntry('info', `chat: ${String(line)}`))
     chat.on('lines', (lines: unknown) => broadcast('chat-lines', lines))
     registerChatIpc(store, chat)
     const syncChat = (): void => {

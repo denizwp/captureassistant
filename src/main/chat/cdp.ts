@@ -12,7 +12,15 @@ import WebSocket from 'ws'
  * door the browser's own developer tools use.
  */
 
-const ENDPOINT = 'http://127.0.0.1:13172'
+/*
+ * Where the game leaves its debugging endpoint. Overridable so the self-test
+ * can stand up its own on a free port instead of fighting a running game for
+ * this one — which also means the test can be run while playing.
+ */
+function endpoint(): string {
+  return `http://127.0.0.1:${Number(process.env['CA_CHAT_PORT'] || 13172)}`
+}
+
 const CALL_TIMEOUT_MS = 4000
 
 interface Target {
@@ -22,6 +30,13 @@ interface Target {
   webSocketDebuggerUrl?: string
 }
 
+export interface Context {
+  id: number
+  /* Which resource the frame belongs to, e.g. https://cfx-nui-chat */
+  origin: string
+  name: string
+}
+
 export class DevToolsPage {
   private socket: WebSocket | null = null
   private nextId = 1
@@ -29,9 +44,21 @@ export class DevToolsPage {
     number,
     { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
   >()
+  /*
+   * The interface is one document with every resource running inside its own
+   * frame, and each frame is its own JavaScript world. An expression evaluated
+   * without naming one of these only ever sees the outer document, which holds
+   * no chat — the chat lives in the frame its resource created. These are the
+   * worlds available to run in.
+   */
+  private readonly worlds: Context[] = []
 
   get connected(): boolean {
     return this.socket?.readyState === WebSocket.OPEN
+  }
+
+  get contexts(): Context[] {
+    return this.worlds
   }
 
   /*
@@ -41,7 +68,7 @@ export class DevToolsPage {
    * for something and gets an answer.
    */
   static async listPages(): Promise<Target[]> {
-    const response = await fetch(`${ENDPOINT}/json`, {
+    const response = await fetch(`${endpoint()}/json`, {
       signal: AbortSignal.timeout(2000)
     })
     if (!response.ok) throw new Error(`devtools ${response.status}`)
@@ -74,12 +101,32 @@ export class DevToolsPage {
   }
 
   private receive(text: string): void {
-    let message: { id?: number; result?: unknown; error?: { message?: string } }
+    let message: {
+      id?: number
+      method?: string
+      params?: { context?: { id?: number; origin?: string; name?: string } }
+      result?: unknown
+      error?: { message?: string }
+    }
     try {
       message = JSON.parse(text) as typeof message
     } catch {
       return
     }
+
+    // Announced as frames come up, which is how the list of worlds is built.
+    if (message.method === 'Runtime.executionContextCreated') {
+      const context = message.params?.context
+      if (typeof context?.id === 'number' && !this.worlds.some((w) => w.id === context.id)) {
+        this.worlds.push({
+          id: context.id,
+          origin: context.origin ?? '',
+          name: context.name ?? ''
+        })
+      }
+      return
+    }
+
     if (typeof message.id !== 'number') return
     const waiter = this.pending.get(message.id)
     if (!waiter) return
@@ -115,17 +162,29 @@ export class DevToolsPage {
   }
 
   /*
-   * Runs an expression in the page and hands back whatever it returned, already
-   * parsed. The expression is expected to stringify its own result, so anything
-   * structured survives the trip without the protocol trying to describe it as
-   * an object graph.
+   * Turns on the notifications that announce each frame's world, then waits
+   * briefly for the ones that already exist to be replayed. Without this the
+   * list is empty and everything runs in the outer document.
    */
-  async evaluate<T>(expression: string): Promise<T | null> {
+  async findWorlds(): Promise<Context[]> {
+    await this.call('Runtime.enable', {})
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    return this.worlds
+  }
+
+  /*
+   * Runs an expression in one of the page's worlds and hands back whatever it
+   * returned, already parsed. The expression stringifies its own result, so
+   * anything structured survives the trip without the protocol trying to
+   * describe it as an object graph.
+   */
+  async evaluate<T>(expression: string, contextId?: number): Promise<T | null> {
     const result = (await this.call('Runtime.evaluate', {
       expression,
       returnByValue: true,
       awaitPromise: false,
-      timeout: CALL_TIMEOUT_MS
+      timeout: CALL_TIMEOUT_MS,
+      ...(contextId === undefined ? {} : { contextId })
     })) as {
       result?: { value?: unknown }
       exceptionDetails?: { text?: string }
