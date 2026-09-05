@@ -122,6 +122,12 @@ class Encoder {
     RETURN_IF(MFCreateAttributes(attributes.put(), 4));
     RETURN_IF(attributes->SetUnknown(MF_SINK_WRITER_D3D_MANAGER, manager_.get()));
     RETURN_IF(attributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1));
+    /*
+     * Throttling is left on. It is what pushes back when the encoder falls
+     * behind, and this engine answers that by dropping a frame rather than
+     * queueing it. Turning it off would remove the only thing bounding how much
+     * a struggling machine can pile up in memory.
+     */
     RETURN_IF(attributes->SetUINT32(MF_LOW_LATENCY, 1));
     RETURN_IF(attributes->SetGUID(MF_TRANSCODE_CONTAINERTYPE, MFTranscodeContainerType_MPEG4));
     RETURN_IF(MFCreateSinkWriterFromURL(path.c_str(), nullptr, attributes.get(), writer_.put()));
@@ -206,6 +212,16 @@ class Encoder {
   HRESULT WriteAudio(IMFSample* sample) {
     if (!writer_ || !withAudio_) return E_FAIL;
     return writer_->WriteSample(audioStream_, sample);
+  }
+
+  /*
+   * Tells the writer that the sound has a hole in it up to this point, rather
+   * than leaving it to wonder whether more is coming. Without this a feed that
+   * stops — and they do stop — leaves the file waiting on it forever.
+   */
+  void MarkAudioGap(int64_t upTo) {
+    if (!writer_ || !withAudio_) return;
+    writer_->SendStreamTick(audioStream_, upTo);
   }
 
   /*
@@ -634,12 +650,28 @@ int wmain(int argc, wchar_t** argv) {
   origin = steadyNow();
   segmentOpenedAt = origin;
   auto lastStat = origin;
+  auto lastAudioAt = origin;
+  int64_t lastAudioFrames = 0;
   while (!stop.load()) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     auto tick = steadyNow();
 
     {
       std::lock_guard<std::mutex> lock(gate);
+      /*
+       * Sound can stop arriving without anything failing — the helper is gone,
+       * the device changed, the machine is busy. The writer is told the stream
+       * has a hole rather than being left to wait on it, which is what used to
+       * leave the picture stuck behind a feed that was never coming back.
+       */
+      if (encoder.HasAudio()) {
+        if (audioFrames != lastAudioFrames) {
+          lastAudioFrames = audioFrames;
+          lastAudioAt = tick;
+        } else if (elapsed(lastAudioAt, tick) > 1.0) {
+          encoder.MarkAudioGap(lastFrameTicks > segmentEpoch ? lastFrameTicks - segmentEpoch : 0);
+        }
+      }
       if (!stop.load() && elapsed(segmentOpenedAt, tick) >= opts.segmentSec && !rotate()) break;
     }
 

@@ -49,6 +49,14 @@ let ring: Ring | null = null
 let encoder: EncoderChoice | null = null
 
 let child: ChildProcess | null = null
+let qualityRestart: NodeJS.Timeout | null = null
+/*
+ * Restarts are asked for from several places at once — a settings change, the
+ * display moving, the engine dying. Run through one queue so a second request
+ * cannot spawn an engine while the first is still between stopping and
+ * starting, which left two of them writing the same segment file.
+ */
+let transition: Promise<void> = Promise.resolve()
 let restarting = false
 let stopping = false
 let consecutiveFailures = 0
@@ -239,6 +247,17 @@ async function startEncoder(): Promise<void> {
   })
 }
 
+function restartEncoder(reason: string): void {
+  transition = transition
+    .then(async () => {
+      if (state === 'idle') return
+      log(reason, 'warning')
+      await stopEncoder()
+      if (await ensureEncoder()) await startEncoder()
+    })
+    .catch((error: unknown) => fail(String(error)))
+}
+
 async function stopEncoder(): Promise<void> {
   const proc = child
   stopping = true
@@ -312,7 +331,42 @@ async function watchForStall(): Promise<void> {
   await setArmed(false)
 }
 
+/*
+ * Everything the buffer depends on between segments happens here, and for a
+ * long time a failure in any of it was thrown away silently. A poll that keeps
+ * failing leaves the ring frozen at whatever it last saw, so every clip comes
+ * out as one segment and nothing anywhere says why. It is said once, and again
+ * only if it goes on, so a passing hiccup does not fill the log.
+ */
+let tickFailures = 0
+let tickReportedAt = 0
+
 async function tick(): Promise<void> {
+  try {
+    await runTick()
+    if (tickFailures > 0) {
+      log(`buffer upkeep recovered after ${tickFailures} failed pass(es)`, 'success')
+      tickFailures = 0
+    }
+  } catch (error) {
+    tickFailures++
+    const now = Date.now()
+    if (tickFailures === 1 || now - tickReportedAt > 30_000) {
+      tickReportedAt = now
+      log(
+        `buffer upkeep failed (${tickFailures}x): ${error instanceof Error ? error.message : String(error)}`,
+        'error'
+      )
+    }
+    // The ring stops moving after this, and a clip taken now is whatever was
+    // last seen — worth saying out loud rather than letting it look normal.
+    if (tickFailures === 5) {
+      toast('error', 'Tampon güncellenemiyor — kayıt eksik olabilir. Günlüğe bak.')
+    }
+  }
+}
+
+async function runTick(): Promise<void> {
   if (!ring || !settings || state === 'idle') return
 
   await ring.poll()
@@ -591,7 +645,7 @@ async function handle(message: Incoming): Promise<void> {
         )
       }
 
-      setInterval(() => void tick().catch(() => undefined), 1000)
+      setInterval(() => void tick(), 1000)
       log('supervisor ready')
       await publish()
       break
@@ -620,9 +674,7 @@ async function handle(message: Incoming): Promise<void> {
         outputIdx = message.outputIdx
         encoder = null
         if (state !== 'idle') {
-          log(`display changed, restarting encoder on output ${outputIdx}`, 'warning')
-          await stopEncoder()
-          if (await ensureEncoder()) await startEncoder()
+          restartEncoder(`display changed, restarting encoder on output ${outputIdx}`)
         }
       }
 
@@ -637,10 +689,19 @@ async function handle(message: Incoming): Promise<void> {
           before.preset !== capture.preset ||
           before.bitrateKbps !== capture.bitrateKbps)
 
+      /*
+       * Dragging a slider sends a settings update per step, and each restart
+       * starts the buffer over from nothing. Done immediately, a few seconds of
+       * adjusting the bitrate empties a ten minute buffer and leaves several
+       * engines fighting over the same segment file. Wait for the adjusting to
+       * stop, then restart once.
+       */
       if (qualityChanged && state !== 'idle') {
-        log('quality changed, restarting encoder', 'warning')
-        await stopEncoder()
-        if (await ensureEncoder()) await startEncoder()
+        if (qualityRestart) clearTimeout(qualityRestart)
+        qualityRestart = setTimeout(() => {
+          qualityRestart = null
+          restartEncoder('quality changed, restarting encoder')
+        }, 1500)
       }
 
       await publish()
