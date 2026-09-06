@@ -1,5 +1,5 @@
 import { app, screen } from 'electron'
-import { appendFileSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -15,15 +15,51 @@ export function logDir(): string {
   return join(app.getPath('userData'), 'logs')
 }
 
+/*
+ * One file per run, named for when the run started.
+ *
+ * Everything used to go into a single file, which meant anyone sending a report
+ * had to find the part that mattered inside weeks of unrelated runs — and
+ * whoever read it had to do the same. A run is the natural unit: a problem
+ * happened during one, and that one file is the whole story.
+ */
+const KEEP_FILES = 12
+
+let sessionFile: string | null = null
+
 export function logPath(): string {
-  return join(logDir(), 'capture-assistant.log')
+  if (!sessionFile) {
+    const now = new Date()
+    const pad = (n: number): string => String(n).padStart(2, '0')
+    const name =
+      `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
+      `${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`
+    sessionFile = join(logDir(), `Capture Assistant ${name}.log`)
+  }
+  return sessionFile
 }
 
-/*
- * One file the user can hand over when something goes wrong. It has to survive
- * a restart, so it does not live in %TEMP%, and it has to stay small enough to
- * attach, so it rolls over into a single previous copy.
- */
+/* Older runs, newest first. */
+export function pastLogs(): string[] {
+  try {
+    return readdirSync(logDir())
+      .filter((name) => /^Capture Assistant .+\.log$/.test(name))
+      .sort()
+      .reverse()
+      .map((name) => join(logDir(), name))
+  } catch {
+    return []
+  }
+}
+
+/* A dozen runs is more than any report has ever needed to reach back. */
+function pruneLogs(): void {
+  for (const path of pastLogs().slice(KEEP_FILES)) {
+    try {
+      unlinkSync(path)
+    } catch {}
+  }
+}
 /* Local time with the offset: the log has to line up with the clip filenames. */
 function stamp(): string {
   const now = new Date()
@@ -38,11 +74,12 @@ function stamp(): string {
 }
 
 export function write(line: string): void {
-  const path = logPath()
   try {
     mkdirSync(logDir(), { recursive: true })
-    const size = statSync(path, { throwIfNoEntry: false })?.size ?? 0
-    if (size > MAX_BYTES) renameSync(path, `${path}.old`)
+    const path = logPath()
+    // A single run that grows past this is one repeating itself, and the first
+    // megabytes already say what it is repeating.
+    if ((statSync(path, { throwIfNoEntry: false })?.size ?? 0) > MAX_BYTES) return
     appendFileSync(path, `${stamp()} ${line}\n`)
   } catch {}
 }
@@ -65,6 +102,7 @@ export function openSession(): { previousRunCrashed: boolean } {
   let previousRunCrashed = false
   try {
     mkdirSync(logDir(), { recursive: true })
+    pruneLogs()
     previousRunCrashed = !!statSync(sessionMarkerPath(), { throwIfNoEntry: false })
     writeFileSync(sessionMarkerPath(), new Date().toISOString())
   } catch {}

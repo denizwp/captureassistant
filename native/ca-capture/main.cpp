@@ -120,15 +120,21 @@ class Encoder {
 
   HRESULT Open(const std::wstring& path) {
     com_ptr<IMFAttributes> attributes;
-    RETURN_IF(MFCreateAttributes(attributes.put(), 4));
+    RETURN_IF(MFCreateAttributes(attributes.put(), 5));
     RETURN_IF(attributes->SetUnknown(MF_SINK_WRITER_D3D_MANAGER, manager_.get()));
     RETURN_IF(attributes->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1));
     /*
-     * Throttling is left on. It is what pushes back when the encoder falls
-     * behind, and this engine answers that by dropping a frame rather than
-     * queueing it. Turning it off would remove the only thing bounding how much
-     * a struggling machine can pile up in memory.
+     * Throttling makes handing over a frame block until the writer is ready for
+     * it. That happens on the thread the screen delivers frames on, holding the
+     * lock the rest of the engine needs, so an encoder that cannot keep up stops
+     * everything: segments never turn over, nothing is reported, and the buffer
+     * sits at whatever it had while the app looks perfectly healthy.
+     *
+     * It is also redundant here. Frames come out of a fixed pool, and when the
+     * encoder is behind that pool runs dry and the frame is dropped — which is
+     * this engine's answer to falling behind, and a better one than waiting.
      */
+    RETURN_IF(attributes->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, 1));
     RETURN_IF(attributes->SetUINT32(MF_LOW_LATENCY, 1));
     RETURN_IF(attributes->SetGUID(MF_TRANSCODE_CONTAINERTYPE, MFTranscodeContainerType_MPEG4));
     RETURN_IF(MFCreateSinkWriterFromURL(path.c_str(), nullptr, attributes.get(), writer_.put()));
@@ -690,13 +696,32 @@ int wmain(int argc, wchar_t** argv) {
   segmentOpenedAt = origin;
   auto lastStat = origin;
   auto lastAudioAt = origin;
+  auto lastMoved = origin;
+  bool reportedStuck = false;
   int64_t lastAudioFrames = 0;
   while (!stop.load()) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     auto tick = steadyNow();
 
     {
-      std::lock_guard<std::mutex> lock(gate);
+      /*
+       * Never waited on. Anything holding this lock is busy handing a frame to
+       * the encoder, and blocking here behind it is what turned a slow encoder
+       * into an engine that stopped without a word. Skipping the pass costs
+       * nothing; the next one is fifty milliseconds away.
+       */
+      std::unique_lock<std::mutex> lock(gate, std::try_to_lock);
+      if (!lock.owns_lock()) {
+        if (elapsed(lastMoved, tick) > 5.0 && !reportedStuck) {
+          reportedStuck = true;
+          std::fprintf(stderr, "encoder has not accepted a frame for %.1fs\n",
+                       elapsed(lastMoved, tick));
+          std::fflush(stderr);
+        }
+        continue;
+      }
+      lastMoved = tick;
+      reportedStuck = false;
       /*
        * Sound can stop arriving without anything failing — the helper is gone,
        * the device changed, the machine is busy. The writer is told the stream
@@ -716,7 +741,8 @@ int wmain(int argc, wchar_t** argv) {
 
     if (tick - lastStat < std::chrono::seconds(5)) continue;
     lastStat = tick;
-    std::lock_guard<std::mutex> lock(gate);
+    std::unique_lock<std::mutex> lock(gate, std::try_to_lock);
+    if (!lock.owns_lock()) continue;
     const double wall = elapsed(origin, tick);
     std::printf("stat frames=%lld dropped=%lld rejected=%lld produced=%.2f wall=%.2f\n", written,
                 dropped, rejected, static_cast<double>(written) / opts.fps, wall);
