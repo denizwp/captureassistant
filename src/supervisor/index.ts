@@ -367,11 +367,15 @@ async function tick(): Promise<void> {
 }
 
 async function runTick(): Promise<void> {
-  if (!ring || !settings || state === 'idle') return
+  const active = ring
+  if (!active || !settings || state === 'idle') return
 
-  await ring.poll()
-  await ring.measure()
+  await active.poll()
+  await active.measure()
+  // Disarming from in here drops the ring, and the rest of the pass was
+  // still reaching for it.
   await watchForStall()
+  if (ring !== active) return
 
   // Being armed is what "the buffer is on" means. Reading it off the settings
   // instead lets a stale copy shrink the ring to the idle window while the user
@@ -379,7 +383,7 @@ async function runTick(): Promise<void> {
   const keep = bufferArmed
     ? settings.replay.durationSec + settings.replay.postRollSec
     : SEGMENT_SEC * 4
-  await ring.prune(keep)
+  await active.prune(keep)
 
   await diskGuard()
   await publish()

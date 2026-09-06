@@ -34,6 +34,7 @@
 #include <strmif.h>
 #include <algorithm>
 #include <atomic>
+#include <memory>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -274,11 +275,36 @@ class Encoder {
     return writer_->WriteSample(stream_, sample);
   }
 
-  void Close() {
-    if (!writer_) return;
-    writer_->Finalize();
+  /*
+   * Closing a segment means asking the writer to finish the file, and on some
+   * machines that call does not come back — a stream it is still waiting on, a
+   * driver that stalls. Waited on directly it takes the whole recorder with it:
+   * segments stop turning over, nothing is reported, and the buffer sits at
+   * whatever it had while the app looks fine.
+   *
+   * So the finish is handed to a thread and given a moment. If it answers, the
+   * segment is whole. If it does not, that one file is written off and the next
+   * segment opens anyway — losing two seconds instead of the recording.
+   */
+  bool Close(double waitSeconds = 4.0) {
+    if (!writer_) return true;
+    auto writer = writer_;
     writer_ = nullptr;
     codec_ = nullptr;
+
+    auto done = std::make_shared<std::atomic<bool>>(false);
+    std::thread([writer, done]() mutable {
+      writer->Finalize();
+      writer = nullptr;
+      done->store(true);
+    }).detach();
+
+    const auto until = std::chrono::steady_clock::now() +
+                       std::chrono::milliseconds(static_cast<int>(waitSeconds * 1000));
+    while (!done->load() && std::chrono::steady_clock::now() < until) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return done->load();
   }
 
  private:
@@ -510,10 +536,23 @@ int wmain(int argc, wchar_t** argv) {
   /* Closes the open segment, reports its span and starts the next one. */
   auto rotate = [&]() -> bool {
     auto closedAt = steadyNow();
-    encoder.Close();
-    std::printf("seg_%06d.mp4,%.6f,%.6f\n", segmentIndex, elapsed(origin, segmentOpenedAt),
-                elapsed(origin, closedAt));
-    std::fflush(stdout);
+    const bool whole = encoder.Close();
+    if (!whole) {
+      // Said out loud: the file is unusable, and the next report should show
+      // which machines this happens on.
+      std::fprintf(stderr, "segment %06d did not finish closing, moving on\n", segmentIndex);
+      std::fflush(stderr);
+    }
+    /*
+     * A file whose finish never came back has no index inside it and will not
+     * open, so it is not offered to the ring. Skipping the line rather than the
+     * whole rotation is what keeps the recording going.
+     */
+    if (whole) {
+      std::printf("seg_%06d.mp4,%.6f,%.6f\n", segmentIndex, elapsed(origin, segmentOpenedAt),
+                  elapsed(origin, closedAt));
+      std::fflush(stdout);
+    }
     segmentIndex++;
     segmentOpenedAt = closedAt;
     // The newest frame is where the next segment's stamps count from; it is at
