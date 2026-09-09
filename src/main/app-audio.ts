@@ -26,6 +26,21 @@ export function helperAvailable(): boolean {
  */
 export class AppAudioCapture {
   private readonly children = new Map<number, ChildProcess>()
+  /*
+   * A helper can die under us — a device change, a driver update, an access
+   * violation deep in the audio stack. It used to be reported and then simply
+   * left dead, so the rest of a session recorded silently while everything
+   * looked fine. It is brought back instead, backing off if it will not stay
+   * up, and giving up loudly rather than spinning.
+   */
+  private wanted = false
+  private failures = 0
+  private retry: NodeJS.Timeout | null = null
+  private hands: {
+    onData: (pid: number, chunk: Buffer) => void
+    onError: (message: string) => void
+    onGone: (pid: number) => void
+  } | null = null
 
   get active(): boolean {
     return this.children.size > 0
@@ -36,6 +51,8 @@ export class AppAudioCapture {
     onError: (message: string) => void,
     onGone: (pid: number) => void = () => undefined
   ): Promise<boolean> {
+    this.wanted = true
+    this.hands = { onData, onError, onGone }
     if (!helperAvailable()) {
       onError('Ses yakalayıcı bulunamadı.')
       this.stop()
@@ -63,6 +80,7 @@ export class AppAudioCapture {
         windowsHide: true
       })
       this.children.set(pid, child)
+      const startedAt = Date.now()
       child.stdout?.on('data', (chunk: Buffer) => onData(pid, chunk))
 
       let stderr = ''
@@ -74,14 +92,40 @@ export class AppAudioCapture {
         if (this.children.get(pid) !== child) return
         this.children.delete(pid)
         onGone(pid)
-        if (code) onError(`ses yakalayıcı durdu (${code}): ${stderr.trim().slice(0, 120)}`)
+        if (!code) return
+        onError(`ses yakalayıcı durdu (${code}): ${stderr.trim().slice(0, 120)}`)
+        // One that ran for a while and then died is a one-off; one that dies
+        // immediately, over and over, is not going to start.
+        if (Date.now() - startedAt > 30_000) this.failures = 0
+        this.relaunch()
       })
     }
 
     return true
   }
 
+  private relaunch(): void {
+    const hands = this.hands
+    if (!this.wanted || !hands || this.retry) return
+
+    this.failures++
+    if (this.failures > 4) {
+      hands.onError('Ses yakalayıcı sürekli kapanıyor — görüntü sessiz kaydediliyor.')
+      return
+    }
+
+    this.retry = setTimeout(() => {
+      this.retry = null
+      if (!this.wanted) return
+      void this.sync(hands.onData, hands.onError, hands.onGone).catch(() => undefined)
+    }, 1000 * this.failures)
+  }
+
   stop(): void {
+    this.wanted = false
+    if (this.retry) clearTimeout(this.retry)
+    this.retry = null
+    this.failures = 0
     for (const child of this.children.values()) child.kill()
     this.children.clear()
   }
