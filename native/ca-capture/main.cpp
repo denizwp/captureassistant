@@ -36,8 +36,10 @@
 #include <atomic>
 #include <memory>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -118,7 +120,70 @@ class Encoder {
   Encoder(com_ptr<IMFDXGIDeviceManager> manager, const Options& opts, int width, int height)
       : manager_(std::move(manager)), opts_(opts), width_(width), height_(height) {}
 
+  struct Slot {
+    com_ptr<IMFSinkWriter> writer;
+    com_ptr<ICodecAPI> codec;
+    DWORD stream = 0;
+    DWORD audioStream = 0;
+  };
+
   HRESULT Open(const std::wstring& path) {
+    Slot slot;
+    RETURN_IF(Build(path, slot));
+    Adopt(slot);
+    return S_OK;
+  }
+
+  /*
+   * Builds the next segment's writer on a thread of its own while this one is
+   * still recording. Setting one up starts a hardware encoder session, which
+   * has taken over a third of a second, and doing it at the boundary with the
+   * lock held froze the picture and the sound for that long.
+   */
+  void Prepare(const std::wstring& path) {
+    auto next = std::make_shared<Prepared>();
+    next->path = path;
+    next_ = next;
+    std::thread([this, next]() {
+      Slot slot;
+      const HRESULT hr = Build(next->path, slot);
+      std::lock_guard<std::mutex> lock(next->mutex);
+      next->hr = hr;
+      next->slot = slot;
+      next->done = true;
+      next->ready.notify_all();
+    }).detach();
+  }
+
+  /* Switches to the prepared writer, or opens one on the spot if there is none. */
+  HRESULT OpenNext(const std::wstring& path) {
+    auto next = std::move(next_);
+    if (!next) return Open(path);
+    std::unique_lock<std::mutex> lock(next->mutex);
+    next->ready.wait(lock, [&]() { return next->done; });
+    if (next->path == path && SUCCEEDED(next->hr)) {
+      Adopt(next->slot);
+      return S_OK;
+    }
+    // A half-built writer can still hold the file open, which would refuse a
+    // second attempt at the same name.
+    next->slot = Slot{};
+    if (next->path != path) DeleteFileW(next->path.c_str());
+    lock.unlock();
+    return Open(path);
+  }
+
+  /* Throws away a prepared writer that will never be used, and its empty file. */
+  void DiscardNext() {
+    auto next = std::move(next_);
+    if (!next) return;
+    std::unique_lock<std::mutex> lock(next->mutex);
+    next->ready.wait(lock, [&]() { return next->done; });
+    next->slot = Slot{};
+    DeleteFileW(next->path.c_str());
+  }
+
+  HRESULT Build(const std::wstring& path, Slot& slot) {
     com_ptr<IMFAttributes> attributes;
     RETURN_IF(MFCreateAttributes(attributes.put(), 5));
     RETURN_IF(attributes->SetUnknown(MF_SINK_WRITER_D3D_MANAGER, manager_.get()));
@@ -137,7 +202,7 @@ class Encoder {
     RETURN_IF(attributes->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, 1));
     RETURN_IF(attributes->SetUINT32(MF_LOW_LATENCY, 1));
     RETURN_IF(attributes->SetGUID(MF_TRANSCODE_CONTAINERTYPE, MFTranscodeContainerType_MPEG4));
-    RETURN_IF(MFCreateSinkWriterFromURL(path.c_str(), nullptr, attributes.get(), writer_.put()));
+    RETURN_IF(MFCreateSinkWriterFromURL(path.c_str(), nullptr, attributes.get(), slot.writer.put()));
 
     com_ptr<IMFMediaType> out;
     RETURN_IF(MFCreateMediaType(out.put()));
@@ -152,7 +217,7 @@ class Encoder {
     // neither CABAC nor B-frames and spends roughly twice the bitrate for the
     // same picture.
     if (!opts_.hevc) RETURN_IF(out->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_High));
-    RETURN_IF(writer_->AddStream(out.get(), &stream_));
+    RETURN_IF(slot.writer->AddStream(out.get(), &slot.stream));
 
     com_ptr<IMFMediaType> in;
     RETURN_IF(MFCreateMediaType(in.put()));
@@ -162,8 +227,8 @@ class Encoder {
     RETURN_IF(MFSetAttributeSize(in.get(), MF_MT_FRAME_SIZE, width_, height_));
     RETURN_IF(MFSetAttributeRatio(in.get(), MF_MT_FRAME_RATE, opts_.fps, 1));
     RETURN_IF(MFSetAttributeRatio(in.get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1));
-    RETURN_IF(writer_->SetInputMediaType(stream_, in.get(), nullptr));
-    ApplyRateControl();
+    RETURN_IF(slot.writer->SetInputMediaType(slot.stream, in.get(), nullptr));
+    ApplyRateControl(slot);
 
     /*
      * Sound goes into the same writer as the picture on purpose. Two engines
@@ -179,7 +244,7 @@ class Encoder {
       RETURN_IF(audioOut->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, kAudioChannels));
       RETURN_IF(audioOut->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16));
       RETURN_IF(audioOut->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 24000));
-      RETURN_IF(writer_->AddStream(audioOut.get(), &audioStream_));
+      RETURN_IF(slot.writer->AddStream(audioOut.get(), &slot.audioStream));
 
       com_ptr<IMFMediaType> audioIn;
       RETURN_IF(MFCreateMediaType(audioIn.put()));
@@ -191,10 +256,10 @@ class Encoder {
       RETURN_IF(audioIn->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, kAudioChannels * 2));
       RETURN_IF(audioIn->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND,
                                    kAudioRate * kAudioChannels * 2));
-      RETURN_IF(writer_->SetInputMediaType(audioStream_, audioIn.get(), nullptr));
+      RETURN_IF(slot.writer->SetInputMediaType(slot.audioStream, audioIn.get(), nullptr));
     }
 
-    RETURN_IF(writer_->BeginWriting());
+    RETURN_IF(slot.writer->BeginWriting());
     return S_OK;
   }
 
@@ -238,12 +303,12 @@ class Encoder {
    * Not every encoder offers it; the ones that do not keep the average-bitrate
    * setting already applied above.
    */
-  void ApplyRateControl() {
+  void ApplyRateControl(Slot& slot) {
     com_ptr<ICodecAPI> codec;
-    if (FAILED(writer_->GetServiceForStream(stream_, GUID_NULL, IID_PPV_ARGS(codec.put())))) {
+    if (FAILED(slot.writer->GetServiceForStream(slot.stream, GUID_NULL, IID_PPV_ARGS(codec.put())))) {
       return;
     }
-    codec_ = codec;
+    slot.codec = codec;
     auto set = [&](const GUID& key, ULONG value) {
       VARIANT variant;
       VariantInit(&variant);
@@ -292,28 +357,60 @@ class Encoder {
    * segment is whole. If it does not, that one file is written off and the next
    * segment opens anyway — losing two seconds instead of the recording.
    */
-  bool Close(double waitSeconds = 4.0) {
-    if (!writer_) return true;
+  /*
+   * Returns straight away. Waiting here used to hold the lock the frames and the
+   * sound are written under, so every segment boundary froze the recording for
+   * as long as the disk took to finish the file — about a second on a busy SATA
+   * drive, several once it filled up. The flag turns 1 when the file is whole
+   * and 2 if the writer refused it.
+   */
+  std::shared_ptr<std::atomic<int>> Finish() {
+    auto state = std::make_shared<std::atomic<int>>(1);
+    if (!writer_) return state;
     auto writer = writer_;
     writer_ = nullptr;
     codec_ = nullptr;
 
-    auto done = std::make_shared<std::atomic<bool>>(false);
-    std::thread([writer, done]() mutable {
+    state->store(0);
+    // A segment nothing reached, a still screen with no sound, fails to finish
+    // and is reported anyway: the ring needs its timeline unbroken, and the
+    // joiner already steps over a file it cannot open.
+    std::thread([writer, state]() mutable {
       writer->Finalize();
       writer = nullptr;
-      done->store(true);
+      state->store(1);
     }).detach();
+    return state;
+  }
 
+  bool Close(double waitSeconds = 4.0) {
+    auto state = Finish();
     const auto until = std::chrono::steady_clock::now() +
                        std::chrono::milliseconds(static_cast<int>(waitSeconds * 1000));
-    while (!done->load() && std::chrono::steady_clock::now() < until) {
+    while (state->load() == 0 && std::chrono::steady_clock::now() < until) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    return done->load();
+    return state->load() == 1;
   }
 
  private:
+  struct Prepared {
+    std::wstring path;
+    std::mutex mutex;
+    std::condition_variable ready;
+    bool done = false;
+    HRESULT hr = E_PENDING;
+    Slot slot;
+  };
+
+  void Adopt(const Slot& slot) {
+    writer_ = slot.writer;
+    codec_ = slot.codec;
+    stream_ = slot.stream;
+    audioStream_ = slot.audioStream;
+  }
+
+  std::shared_ptr<Prepared> next_;
   com_ptr<IMFDXGIDeviceManager> manager_;
   Options opts_;
   int width_;
@@ -374,6 +471,79 @@ class AudioPipe {
   std::wstring path_;
   HANDLE handle_ = INVALID_HANDLE_VALUE;
   std::vector<float> quad_;
+};
+
+/*
+ * Files finish in the background, possibly out of order, but the ring reads
+ * its index top to bottom. Segments are reported strictly in turn: the oldest
+ * one still finishing holds the rest back, and one that has not finished after
+ * ten seconds is written off so a stuck file cannot hold the buffer forever.
+ */
+class SegmentReporter {
+ public:
+  void Start() {
+    thread_ = std::thread([this]() {
+      while (!stop_.load()) {
+        Flush();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      }
+    });
+  }
+
+  void Add(int index, double start, double end, std::shared_ptr<std::atomic<int>> state) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    queue_.push_back({index, start, end, std::move(state), std::chrono::steady_clock::now()});
+  }
+
+  /* Gives what is still finishing a few seconds to land before the engine exits. */
+  void Drain(double seconds) {
+    const auto until = std::chrono::steady_clock::now() +
+                       std::chrono::milliseconds(static_cast<int>(seconds * 1000));
+    while (std::chrono::steady_clock::now() < until) {
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (queue_.empty()) break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    stop_ = true;
+    if (thread_.joinable()) thread_.join();
+  }
+
+ private:
+  struct Pending {
+    int index;
+    double start;
+    double end;
+    std::shared_ptr<std::atomic<int>> state;
+    std::chrono::steady_clock::time_point since;
+  };
+
+  void Flush() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    while (!queue_.empty()) {
+      const Pending& head = queue_.front();
+      const int state = head.state->load();
+      if (state == 1) {
+        std::printf("seg_%06d.mp4,%.6f,%.6f\n", head.index, head.start, head.end);
+        std::fflush(stdout);
+      } else if (state == 2) {
+        std::fprintf(stderr, "segment %06d could not be finished, skipping it\n", head.index);
+        std::fflush(stderr);
+      } else if (std::chrono::steady_clock::now() - head.since > std::chrono::seconds(10)) {
+        std::fprintf(stderr, "segment %06d did not finish closing, moving on\n", head.index);
+        std::fflush(stderr);
+      } else {
+        return;
+      }
+      queue_.pop_front();
+    }
+  }
+
+  std::mutex mutex_;
+  std::deque<Pending> queue_;
+  std::thread thread_;
+  std::atomic<bool> stop_{false};
 };
 
 }  // namespace
@@ -525,13 +695,14 @@ int wmain(int argc, wchar_t** argv) {
   }
 
   auto openSegment = [&]() -> bool {
-    HRESULT open = encoder.Open(SegmentPath(opts.dir, segmentIndex));
+    HRESULT open = encoder.OpenNext(SegmentPath(opts.dir, segmentIndex));
     if (FAILED(open)) {
       Fail("open segment", open);
       exitCode = kExitSetup;
       stop = true;
       return false;
     }
+    encoder.Prepare(SegmentPath(opts.dir, segmentIndex + 1));
     return true;
   };
   if (!openSegment()) {
@@ -539,26 +710,14 @@ int wmain(int argc, wchar_t** argv) {
     return exitCode.load();
   }
 
-  /* Closes the open segment, reports its span and starts the next one. */
+  SegmentReporter reporter;
+  reporter.Start();
+
+  /* Hands the open segment off to finish, and starts the next one. */
   auto rotate = [&]() -> bool {
     auto closedAt = steadyNow();
-    const bool whole = encoder.Close();
-    if (!whole) {
-      // Said out loud: the file is unusable, and the next report should show
-      // which machines this happens on.
-      std::fprintf(stderr, "segment %06d did not finish closing, moving on\n", segmentIndex);
-      std::fflush(stderr);
-    }
-    /*
-     * A file whose finish never came back has no index inside it and will not
-     * open, so it is not offered to the ring. Skipping the line rather than the
-     * whole rotation is what keeps the recording going.
-     */
-    if (whole) {
-      std::printf("seg_%06d.mp4,%.6f,%.6f\n", segmentIndex, elapsed(origin, segmentOpenedAt),
-                  elapsed(origin, closedAt));
-      std::fflush(stdout);
-    }
+    reporter.Add(segmentIndex, elapsed(origin, segmentOpenedAt), elapsed(origin, closedAt),
+                 encoder.Finish());
     segmentIndex++;
     segmentOpenedAt = closedAt;
     // The newest frame is where the next segment's stamps count from; it is at
@@ -566,7 +725,13 @@ int wmain(int argc, wchar_t** argv) {
     // hand.
     segmentEpoch = lastFrameTicks;
     audioAtSegmentStart = audioFrames;
-    return openSegment();
+    const bool opened = openSegment();
+    const double took = elapsed(closedAt, steadyNow());
+    if (took > 0.25) {
+      std::fprintf(stderr, "segment %06d took %.2fs to open\n", segmentIndex, took);
+      std::fflush(stderr);
+    }
+    return opened;
   };
 
   /*
@@ -769,7 +934,9 @@ int wmain(int argc, wchar_t** argv) {
     session.Close();
     pool.Close();
     encoder.Close();
+    encoder.DiscardNext();
   }
+  reporter.Drain(6.0);
   MFShutdown();
   return exitCode.load();
 }

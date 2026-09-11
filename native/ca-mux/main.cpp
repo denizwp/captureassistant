@@ -107,6 +107,70 @@ bool Decodes(const std::wstring& path) {
   return false;
 }
 
+bool IsHevc(IMFSourceReader* reader) {
+  com_ptr<IMFMediaType> type;
+  if (FAILED(reader->GetNativeMediaType(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), 0,
+                                        type.put()))) {
+    return false;
+  }
+  GUID subtype{};
+  type->GetGUID(MF_MT_SUBTYPE, &subtype);
+  return subtype == MFVideoFormat_HEVC;
+}
+
+/*
+ * The reader's keyframe flag comes from the segment's own index, and it has
+ * been seen marking plain pictures as keyframes. A clip started on one of
+ * those opens on a second of smeared or stale picture until the next real
+ * keyframe, so the bitstream itself gets the final say. Anything that cannot
+ * be read is taken on trust.
+ */
+bool StartsFresh(IMFSample* sample, bool hevc) {
+  com_ptr<IMFMediaBuffer> buffer;
+  if (FAILED(sample->ConvertToContiguousBuffer(buffer.put()))) return true;
+  BYTE* data = nullptr;
+  DWORD length = 0;
+  if (FAILED(buffer->Lock(&data, nullptr, &length))) return true;
+
+  auto fresh = [hevc](BYTE header) {
+    if (hevc) {
+      const int type = (header >> 1) & 0x3f;
+      return type >= 16 && type <= 21;
+    }
+    return (header & 0x1f) == 5;
+  };
+  auto slice = [hevc](BYTE header) {
+    if (hevc) return ((header >> 1) & 0x3f) < 32;
+    const int type = header & 0x1f;
+    return type >= 1 && type <= 5;
+  };
+
+  int verdict = -1;
+  const bool startCodes = length >= 4 && data[0] == 0 && data[1] == 0 &&
+                          (data[2] == 1 || (data[2] == 0 && data[3] == 1));
+  if (startCodes) {
+    for (DWORD i = 0; i + 3 < length && verdict < 0; i++) {
+      if (data[i] != 0 || data[i + 1] != 0 || data[i + 2] != 1) continue;
+      const BYTE header = data[i + 3];
+      if (fresh(header)) verdict = 1;
+      else if (slice(header)) verdict = 0;
+      i += 2;
+    }
+  } else {
+    for (DWORD i = 0; i + 4 < length && verdict < 0;) {
+      const DWORD size = (static_cast<DWORD>(data[i]) << 24) | (data[i + 1] << 16) |
+                         (data[i + 2] << 8) | data[i + 3];
+      const BYTE header = data[i + 4];
+      if (fresh(header)) verdict = 1;
+      else if (slice(header)) verdict = 0;
+      if (size == 0 || size > length - i - 4) break;
+      i += 4 + size;
+    }
+  }
+  buffer->Unlock();
+  return verdict != 0;
+}
+
 /*
  * Where the cut can actually begin: the last keyframe at or before the moment
  * asked for. Starting at the next one instead loses whatever sits between the
@@ -116,6 +180,7 @@ bool Decodes(const std::wstring& path) {
  * holding the moment, so only that segment is scanned and nothing is decoded.
  */
 int64_t StartOfCut(IMFSourceReader* reader, int64_t startTicks) {
+  const bool hevc = IsHevc(reader);
   int64_t best = -1;
   while (true) {
     DWORD flags = 0;
@@ -129,7 +194,7 @@ int64_t StartOfCut(IMFSourceReader* reader, int64_t startTicks) {
     if (!sample) continue;
     UINT32 clean = 0;
     sample->GetUINT32(MFSampleExtension_CleanPoint, &clean);
-    if (!clean) continue;
+    if (!clean || !StartsFresh(sample.get(), hevc)) continue;
     if (timestamp > startTicks) break;
     best = timestamp;
   }
@@ -166,6 +231,7 @@ int Join(const std::vector<com_ptr<IMFSourceReader>>& readers, IMFSourceReader* 
          long long* videoOut) {
   com_ptr<IMFSinkWriter> writer;
   std::vector<StreamMap> streams;
+  const bool hevc = IsHevc(shape);
   int64_t offset = 0;
   int64_t written = 0;
   long long readVideo = 0, wroteVideo = 0, readAudio = 0, wroteAudio = 0;
@@ -266,7 +332,7 @@ int Join(const std::vector<com_ptr<IMFSourceReader>>& readers, IMFSourceReader* 
         if (!mapped->video || absolute < startTicks) continue;
         UINT32 clean = 0;
         sample->GetUINT32(MFSampleExtension_CleanPoint, &clean);
-        if (!clean) continue;
+        if (!clean || !StartsFresh(sample.get(), hevc)) continue;
         started = true;
         written = absolute;
       }
