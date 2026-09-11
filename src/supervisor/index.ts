@@ -156,6 +156,8 @@ async function startEncoder(): Promise<void> {
    * never need to know what produced it.
    */
   let lastStats = 0
+  let lastFrames = 0
+  let lastWall = 0
   const read = createNativeReader({
     onReady: (line) => {
       anchor()
@@ -172,12 +174,19 @@ async function startEncoder(): Promise<void> {
       lastStats = now
       const target = settings?.capture.fps ?? 60
       const rate = stats.wall > 0 ? stats.frames / stats.wall : 0
-      // A timeline in the log is the only way to tell afterwards whether a clip
-      // came out choppy because the screen was never sampled.
+      /*
+       * The whole-run average hides a bad stretch behind an idle one — hours of
+       * a still desktop drag it down, a choppy fight barely moves it. The rate
+       * since the previous line is what says whether a moment recorded smoothly.
+       */
+      const recent =
+        stats.wall > lastWall ? (stats.frames - lastFrames) / (stats.wall - lastWall) : 0
+      lastFrames = stats.frames
+      lastWall = stats.wall
       log(
-        `capture ${rate.toFixed(1)}/${target} fps, ` +
+        `capture ${recent.toFixed(1)}/${target} fps now (${rate.toFixed(1)} overall), ` +
           `${stats.produced.toFixed(2)}s of ${stats.wall.toFixed(2)}s wall` +
-          ` (${stats.dropped} dropped, ${stats.rejected} rejected)`
+          ` (${stats.dropped} dropped, ${stats.rejected} rejected, ${stats.skipped} thinned)`
       )
     }
   })
@@ -242,7 +251,16 @@ async function startEncoder(): Promise<void> {
     const delay = rebuild ? 0 : Math.min(400 * 2 ** consecutiveFailures, 5000)
     setTimeout(() => {
       restarting = false
-      void startEncoder().catch((error: unknown) => fail(String(error)))
+      // Through the same queue as every other restart. Started straight from
+      // here it could land while a re-arm was already spawning one, and the two
+      // engines then wrote the same segment names into the same folder — the
+      // buffer lost track of what it had and stopped deleting anything.
+      transition = transition
+        .then(async () => {
+          if (state === 'idle' || child) return
+          await startEncoder()
+        })
+        .catch((error: unknown) => fail(String(error)))
     }, delay)
   })
 }
@@ -339,6 +357,7 @@ async function watchForStall(): Promise<void> {
  * only if it goes on, so a passing hiccup does not fill the log.
  */
 let tickFailures = 0
+let sweepCount = 0
 let tickReportedAt = 0
 
 async function tick(): Promise<void> {
@@ -384,6 +403,10 @@ async function runTick(): Promise<void> {
     ? settings.replay.durationSec + settings.replay.postRollSec
     : SEGMENT_SEC * 4
   await active.prune(keep)
+  if (++sweepCount % 30 === 0) {
+    const swept = await active.sweepDisk(keep)
+    if (swept > 0) log(`removed ${swept} segment file(s) the buffer had lost track of`, 'warning')
+  }
 
   await diskGuard()
   await publish()
@@ -480,7 +503,9 @@ async function startRecording(): Promise<void> {
 
   recordStart = ring?.liveEnd ?? 0
   recordStartedAt = Date.now()
-  ring?.pin(ring.nextSegmentNumber, null, 'recording')
+  // Held until the recording stops, however long that is. The usual five-minute
+  // expiry let the janitor eat the start of any recording that ran past it.
+  ring?.pin(ring.nextSegmentNumber, null, 'recording', Infinity)
   state = 'recording'
   log('recording started', 'success')
   await publish()

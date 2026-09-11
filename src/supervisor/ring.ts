@@ -244,8 +244,8 @@ export class Ring {
     this.lastBytesAt = now
   }
 
-  pin(lo: number, hi: number | null, owner: string): void {
-    this.pins.push({ lo, hi, owner, expiresAt: Date.now() + PIN_TTL_MS })
+  pin(lo: number, hi: number | null, owner: string, ttlMs = PIN_TTL_MS): void {
+    this.pins.push({ lo, hi, owner, expiresAt: Date.now() + ttlMs })
   }
 
   unpin(owner: string): void {
@@ -256,6 +256,34 @@ export class Ring {
     const now = Date.now()
     this.pins = this.pins.filter((pin) => pin.expiresAt > now)
     return this.pins.some((pin) => index >= pin.lo && (pin.hi === null || index <= pin.hi))
+  }
+
+  /*
+   * The folder is the truth, not the index. The index can be wrong — two engines
+   * writing the same names, a segment that never finished closing and so was
+   * never listed, a crash between writing a file and recording it — and a
+   * segment the ring does not know about is one it will never delete. Those
+   * once piled up to forty gigabytes and filled the disk. So anything in the
+   * folder older than the window goes by its age alone, whatever the index
+   * says. Pinned segments stay: a clip being put together still needs them.
+   */
+  async sweepDisk(keepSec: number): Promise<number> {
+    const names = await readdir(this.dir).catch(() => [] as string[])
+    const oldest = Date.now() - (keepSec + SEGMENT_SEC * 2 + 60) * 1000
+    const gone = new Set<string>()
+
+    for (const name of names) {
+      const match = /^seg_(\d+)\.(?:ts|mp4)$/.exec(name)
+      if (!match?.[1] || this.isPinned(Number(match[1]))) continue
+      const path = join(this.dir, name)
+      const info = await stat(path).catch(() => null)
+      if (!info || info.mtimeMs > oldest) continue
+      await rm(path, { force: true }).catch(() => undefined)
+      gone.add(path)
+    }
+
+    if (gone.size > 0) this.segments = this.segments.filter((s) => !gone.has(s.file))
+    return gone.size
   }
 
   async prune(keepSec: number): Promise<number> {

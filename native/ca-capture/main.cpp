@@ -495,7 +495,7 @@ int wmain(int argc, wchar_t** argv) {
   int64_t audioFrames = 0;
   int64_t audioAtSegmentStart = 0;
   int64_t lastFrameTicks = 0;
-  long long written = 0, dropped = 0, rejected = 0;
+  long long written = 0, dropped = 0, rejected = 0, skipped = 0;
   std::atomic<int> exitCode{0};
   std::atomic<bool> stop{false};
 
@@ -611,8 +611,10 @@ int wmain(int argc, wchar_t** argv) {
     });
   }
 
+  // Three buffers: with two, one slow copy to the encoder left nowhere for the
+  // next frame to land and it was lost before this code ever saw it.
   auto pool = Direct3D11CaptureFramePool::CreateFreeThreaded(
-      rtDevice, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, item.Size());
+      rtDevice, DirectXPixelFormat::B8G8R8A8UIntNormalized, 3, item.Size());
 
   pool.FrameArrived([&](Direct3D11CaptureFramePool const& sender,
                        winrt::Windows::Foundation::IInspectable const&) {
@@ -637,7 +639,14 @@ int wmain(int argc, wchar_t** argv) {
       nextDue = now;
     }
     lastFrameTicks = now;
-    if (now < nextDue) return;
+    // Frames arrive on the display's clock, a hair either side of each slot. A
+    // frame a fraction early used to be thrown away and the next one taken a
+    // whole interval later, halving the rate on busy scenes without a single
+    // frame counted as lost. Within a quarter interval now counts as on time.
+    if (now + frameTicks / 4 < nextDue) {
+      skipped++;
+      return;
+    }
     nextDue = (std::max)(nextDue + frameTicks, now - frameTicks);
 
     com_ptr<IMFSample> sample;
@@ -744,8 +753,9 @@ int wmain(int argc, wchar_t** argv) {
     std::unique_lock<std::mutex> lock(gate, std::try_to_lock);
     if (!lock.owns_lock()) continue;
     const double wall = elapsed(origin, tick);
-    std::printf("stat frames=%lld dropped=%lld rejected=%lld produced=%.2f wall=%.2f\n", written,
-                dropped, rejected, static_cast<double>(written) / opts.fps, wall);
+    std::printf(
+        "stat frames=%lld dropped=%lld rejected=%lld skipped=%lld produced=%.2f wall=%.2f\n",
+        written, dropped, rejected, skipped, static_cast<double>(written) / opts.fps, wall);
     std::fflush(stdout);
   }
 

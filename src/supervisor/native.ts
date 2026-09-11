@@ -43,6 +43,8 @@ export interface NativeStats {
   frames: number
   dropped: number
   rejected: number
+  /* Frames that arrived before their slot and were thinned out. */
+  skipped: number
   produced: number
   wall: number
 }
@@ -73,6 +75,7 @@ export function createNativeReader(events: NativeEvents): (chunk: string) => voi
           frames: read('frames'),
           dropped: read('dropped'),
           rejected: read('rejected'),
+          skipped: read('skipped'),
           produced: read('produced'),
           wall: read('wall')
         })
